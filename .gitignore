@@ -1,0 +1,35 @@
+# ===== Build output =====
+bin/
+obj/
+
+# ===== Logs =====
+logs/
+*.log
+coverage_log.txt
+
+# ===== Compiled files =====
+*.exe
+*.out
+*.o
+*.a
+*.so
+*.dll
+
+# ===== Debug / temp =====
+*.tmp
+*.temp
+
+# ===== IDE (Code::Blocks) =====
+*.layout
+*.depend
+
+# ===== OS rác =====
+.DS_Store
+Thumbs.db
+
+# ===== VS Code (nếu có dùng) =====
+.vscode/
+
+# ===== Others =====
+*.bak
+*.swp
