@@ -47,5 +47,6 @@ extern std::mutex simMutex;
 
 void initDynamicObstacle();
 void startDynamicObstacle();
+void stopDynamicObstacle();
 void waitDynamicObstacle();
 void addObstacle(int r, int c, ObstacleType type);
