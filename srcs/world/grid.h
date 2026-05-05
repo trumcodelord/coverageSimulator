@@ -1,0 +1,19 @@
+#pragma once
+
+#include "types.h"
+#include <vector>
+
+extern int rows, cols;
+extern Cell start;
+extern bool blocked[1001][1001];
+extern bool covered[1001][1001];
+extern bool dynamicBlocked[1001][1001];
+extern int dr[5], dc[5];
+extern int initialFreeCells;
+
+bool inBounds(int r, int c);
+bool isFree(int r, int c);
+bool isCovered(int r, int c);
+void markCovered(int r, int c);
+bool allCovered();
+std::vector<Cell> getNeighbors(Cell p);
