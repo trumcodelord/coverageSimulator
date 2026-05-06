@@ -66,6 +66,12 @@ static void switchMode(RobotMode &mode, RobotMode newMode,
     cout << "[MODE] -> " << modeName(mode) << '\n';
 }
 
+static void safeDrawFrame(const Robot &rb, bool showPath, int delay)
+{
+    lock_guard<mutex> lock(simMutex);
+    drawFrame(rb, showPath, delay);
+}
+
 static bool rebuildUsablePathToNearestTarget(Robot &rb)
 {
     while (true)
@@ -129,7 +135,7 @@ void executeCoverage(Robot &rb)
     }
 
     initWindow();
-    drawFrame(rb, true, NORMAL_MOVE_DELAY);
+    safeDrawFrame(rb, true, NORMAL_MOVE_DELAY);
 
     while (true)
     {
@@ -139,6 +145,7 @@ void executeCoverage(Robot &rb)
                 break;
         }
 
+        bool shouldStop = false;
         bool needWaitDraw = false;
         int waitDelay = (mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
 
@@ -183,13 +190,13 @@ void executeCoverage(Robot &rb)
                         if (holdCycleCount > MAX_HOLD_CYCLES)
                         {
                             cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
-                            break;
+                            shouldStop = true;
                         }
                     }
                 }
             }
 
-            if (!needWaitDraw && mode != HOLD_SAFE && rb.pathID >= (int)rb.path.size())
+            if (!shouldStop && !needWaitDraw && mode != HOLD_SAFE && rb.pathID >= (int)rb.path.size())
             {
                 bool built = rebuildUsablePathToNearestTarget(rb);
 
@@ -207,10 +214,10 @@ void executeCoverage(Robot &rb)
                     if (retryCount > MAX_RETRY_COUNT)
                     {
                         cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
-                        break;
+                        shouldStop = true;
                     }
 
-                    if (alertFailCount >= ALERT_FAIL_TO_HOLD)
+                    if (!shouldStop && alertFailCount >= ALERT_FAIL_TO_HOLD)
                     {
                         cout << "[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.\n";
                         switchMode(mode, HOLD_SAFE, stableStepCount, alertFailCount, holdTick);
@@ -219,7 +226,7 @@ void executeCoverage(Robot &rb)
                         needWaitDraw = true;
                         waitDelay = HOLD_WAIT_DELAY;
                     }
-                    else
+                    else if (!shouldStop)
                     {
                         needWaitDraw = true;
                         waitDelay = NO_TARGET_WAIT_DELAY;
@@ -232,7 +239,7 @@ void executeCoverage(Robot &rb)
                 }
             }
 
-            if (!needWaitDraw && mode != HOLD_SAFE && rb.pathID < (int)rb.path.size())
+            if (!shouldStop && !needWaitDraw && mode != HOLD_SAFE && rb.pathID < (int)rb.path.size())
             {
                 Cell prev = rb.pos;
                 Cell next = rb.path[rb.pathID];
@@ -253,10 +260,10 @@ void executeCoverage(Robot &rb)
                     if (retryCount > MAX_RETRY_COUNT)
                     {
                         cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
-                        break;
+                        shouldStop = true;
                     }
 
-                    if (alertFailCount >= ALERT_FAIL_TO_HOLD)
+                    if (!shouldStop && alertFailCount >= ALERT_FAIL_TO_HOLD)
                     {
                         cout << "[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.\n";
                         switchMode(mode, HOLD_SAFE, stableStepCount, alertFailCount, holdTick);
@@ -264,7 +271,7 @@ void executeCoverage(Robot &rb)
                         needWaitDraw = true;
                         waitDelay = HOLD_WAIT_DELAY;
                     }
-                    else
+                    else if (!shouldStop)
                     {
                         needWaitDraw = true;
                         waitDelay = BLOCKED_WAIT_DELAY;
@@ -306,9 +313,12 @@ void executeCoverage(Robot &rb)
             }
         }
 
-        drawFrame(rb, true, waitDelay);
+        safeDrawFrame(rb, true, waitDelay);
+
+        if (shouldStop)
+            break;
     }
 
-    drawFrame(rb, true, 1);
+    safeDrawFrame(rb, true, 1);
     closeWindow();
 }
