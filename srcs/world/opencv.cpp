@@ -319,8 +319,6 @@ static void paintHUD(Mat &canvas, const Robot &rb, int delay)
 
 void drawFrame(const Robot &rb, bool showPath, int delay)
 {
-    if (delay < 0) delay = 0;
-
     Mat canvas(
         canvasHeight(),
         canvasWidth(),
@@ -340,5 +338,10 @@ void drawFrame(const Robot &rb, bool showPath, int delay)
     paintHUD(canvas, rb, delay);
 
     imshow(WINDOW_NAME, canvas);
+}
+
+void waitFrame(int delay)
+{
+    if (delay < 0) delay = 0;
     waitKey(delay);
 }
