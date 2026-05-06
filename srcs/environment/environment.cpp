@@ -7,6 +7,11 @@ void initEnvironment()
     startDynamicObstacle();
 }
 
+void stopEnvironment()
+{
+    stopDynamicObstacle();
+}
+
 void waitEnvironment()
 {
     waitDynamicObstacle();
