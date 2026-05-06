@@ -29,6 +29,28 @@ enum RobotMode
     HOLD_SAFE
 };
 
+struct CoverageContext
+{
+    RobotMode mode = NORMAL;
+
+    int retryCount = 0;
+    int stableStepCount = 0;
+    int alertFailCount = 0;
+    int holdTick = 0;
+    int holdCycleCount = 0;
+
+    bool shouldStop = false;
+    bool needWaitDraw = false;
+    int waitDelay = NORMAL_MOVE_DELAY;
+};
+
+static void beginFrame(CoverageContext &ctx)
+{
+    ctx.shouldStop = false;
+    ctx.needWaitDraw = false;
+    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
+}
+
 static void printRetryMessage(const char *msg, int retryCount)
 {
     if (retryCount == 1 || retryCount % RETRY_LOG_INTERVAL == 0)
@@ -51,25 +73,34 @@ static void clearPath(Robot &rb)
     rb.pathID = 0;
 }
 
-static void switchMode(RobotMode &mode, RobotMode newMode,
-                       int &stableStepCount,
-                       int &alertFailCount,
-                       int &holdTick)
+static void switchMode(CoverageContext &ctx, RobotMode newMode)
 {
-    if (mode == newMode) return;
+    if (ctx.mode == newMode) return;
 
-    mode = newMode;
-    stableStepCount = 0;
-    alertFailCount = 0;
-    holdTick = 0;
+    ctx.mode = newMode;
+    ctx.stableStepCount = 0;
+    ctx.alertFailCount = 0;
+    ctx.holdTick = 0;
 
-    cout << "[MODE] -> " << modeName(mode) << '\n';
+    cout << "[MODE] -> " << modeName(ctx.mode) << '\n';
 }
 
 static void safeDrawFrame(const Robot &rb, bool showPath, int delay)
 {
     lock_guard<mutex> lock(simMutex);
     drawFrame(rb, showPath, delay);
+}
+
+static void initializeRobotState(Robot &rb)
+{
+    rb.steps = 0;
+    rb.pathID = 0;
+    rb.path.clear();
+    rb.trail.clear();
+    rb.edgeCount.clear();
+
+    rb.trail.push_back(rb.pos);
+    markCovered(rb.pos.r, rb.pos.c);
 }
 
 static bool rebuildUsablePathToNearestTarget(Robot &rb)
@@ -112,26 +143,206 @@ static bool rebuildUsablePathToNearestTarget(Robot &rb)
     }
 }
 
+static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
+{
+    cout << message << '\n';
+    switchMode(ctx, HOLD_SAFE);
+    ctx.holdCycleCount = 0;
+    clearPath(rb);
+    ctx.needWaitDraw = true;
+    ctx.waitDelay = HOLD_WAIT_DELAY;
+}
+
+static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
+{
+    clearPath(rb);
+
+    ctx.holdTick++;
+    ctx.needWaitDraw = true;
+    ctx.waitDelay = HOLD_WAIT_DELAY;
+
+    if (ctx.holdTick < HOLD_REPLAN_INTERVAL)
+        return;
+
+    ctx.holdTick = 0;
+    ctx.holdCycleCount++;
+
+    bool recovered = rebuildUsablePathToNearestTarget(rb);
+
+    if (recovered)
+    {
+        cout << "[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.\n";
+        switchMode(ctx, ALERT);
+        ctx.retryCount = 0;
+        ctx.holdCycleCount = 0;
+        ctx.needWaitDraw = false;
+        ctx.waitDelay = ALERT_MOVE_DELAY;
+        return;
+    }
+
+    if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
+    {
+        cout << "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle "
+             << ctx.holdCycleCount << "/" << MAX_HOLD_CYCLES << '\n';
+    }
+
+    if (ctx.holdCycleCount > MAX_HOLD_CYCLES)
+    {
+        cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
+        ctx.shouldStop = true;
+    }
+}
+
+static void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
+{
+    ctx.retryCount++;
+
+    if (ctx.mode == NORMAL)
+        switchMode(ctx, ALERT);
+
+    ctx.alertFailCount++;
+
+    printRetryMessage("[WAIT] Chua co target/path usable tam thoi.", ctx.retryCount);
+
+    if (ctx.retryCount > MAX_RETRY_COUNT)
+    {
+        cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
+        ctx.shouldStop = true;
+        return;
+    }
+
+    if (ctx.alertFailCount >= ALERT_FAIL_TO_HOLD)
+    {
+        enterHoldSafe(ctx, rb, "[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.");
+        return;
+    }
+
+    ctx.needWaitDraw = true;
+    ctx.waitDelay = NO_TARGET_WAIT_DELAY;
+}
+
+static void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
+{
+    if (ctx.needWaitDraw || ctx.mode == HOLD_SAFE)
+        return;
+
+    if (rb.pathID < (int)rb.path.size())
+        return;
+
+    bool built = rebuildUsablePathToNearestTarget(rb);
+
+    if (!built)
+    {
+        handleNoUsablePath(rb, ctx);
+        return;
+    }
+
+    // Replan thanh cong -> frame nay se move bang toc do ALERT neu dang ALERT
+    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
+}
+
+static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
+{
+    clearPath(rb);
+
+    ctx.retryCount++;
+
+    if (ctx.mode == NORMAL)
+        switchMode(ctx, ALERT);
+
+    ctx.alertFailCount++;
+
+    printRetryMessage("[WAIT] O ke tiep dang bi chan.", ctx.retryCount);
+
+    if (ctx.retryCount > MAX_RETRY_COUNT)
+    {
+        cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
+        ctx.shouldStop = true;
+        return;
+    }
+
+    if (ctx.alertFailCount >= ALERT_FAIL_TO_HOLD)
+    {
+        enterHoldSafe(ctx, rb, "[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.");
+        return;
+    }
+
+    ctx.needWaitDraw = true;
+    ctx.waitDelay = BLOCKED_WAIT_DELAY;
+}
+
+static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
+{
+    Cell prev = rb.pos;
+    Cell next = rb.path[rb.pathID];
+
+    if (!isFree(next.r, next.c))
+    {
+        handleBlockedNextCell(rb, ctx);
+        return;
+    }
+
+    rb.pos = next;
+    rb.trail.push_back(rb.pos);
+    rb.pathID++;
+
+    Edge e(prev, next);
+    rb.edgeCount[e]++;
+
+    rb.steps++;
+    ctx.retryCount = 0;
+    ctx.alertFailCount = 0;
+
+    markCovered(rb.pos.r, rb.pos.c);
+
+    // Neu dang ALERT thi buoc vua replan xong se chay nhanh ngay
+    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
+
+    if (ctx.mode != ALERT)
+        return;
+
+    ctx.stableStepCount++;
+
+    if (ctx.stableStepCount >= RECOVERY_STEPS)
+    {
+        switchMode(ctx, NORMAL);
+        ctx.waitDelay = NORMAL_MOVE_DELAY;
+    }
+    else
+    {
+        clearPath(rb);
+    }
+}
+
+static void moveIfPossible(Robot &rb, CoverageContext &ctx)
+{
+    if (ctx.shouldStop || ctx.needWaitDraw || ctx.mode == HOLD_SAFE)
+        return;
+
+    if (rb.pathID >= (int)rb.path.size())
+        return;
+
+    moveRobotOneStep(rb, ctx);
+}
+
+static void processCoverageFrame(Robot &rb, CoverageContext &ctx)
+{
+    if (ctx.mode == HOLD_SAFE)
+        handleHoldSafe(rb, ctx);
+
+    if (!ctx.shouldStop)
+        planPathIfNeeded(rb, ctx);
+
+    moveIfPossible(rb, ctx);
+}
+
 void executeCoverage(Robot &rb)
 {
-    rb.steps = 0;
-    rb.pathID = 0;
-    rb.path.clear();
-    rb.trail.clear();
-    rb.edgeCount.clear();
-
-    int retryCount = 0;
-    int stableStepCount = 0;
-    int alertFailCount = 0;
-    int holdTick = 0;
-    int holdCycleCount = 0;
-
-    RobotMode mode = NORMAL;
+    CoverageContext ctx;
 
     {
         lock_guard<mutex> lock(simMutex);
-        rb.trail.push_back(rb.pos);
-        markCovered(rb.pos.r, rb.pos.c);
+        initializeRobotState(rb);
     }
 
     initWindow();
@@ -143,179 +354,14 @@ void executeCoverage(Robot &rb)
             lock_guard<mutex> lock(simMutex);
             if (allCovered())
                 break;
+
+            beginFrame(ctx);
+            processCoverageFrame(rb, ctx);
         }
 
-        bool shouldStop = false;
-        bool needWaitDraw = false;
-        int waitDelay = (mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
+        safeDrawFrame(rb, true, ctx.waitDelay);
 
-        {
-            lock_guard<mutex> lock(simMutex);
-
-            if (allCovered())
-                break;
-
-            if (mode == HOLD_SAFE)
-            {
-                clearPath(rb);
-
-                holdTick++;
-                needWaitDraw = true;
-                waitDelay = HOLD_WAIT_DELAY;
-
-                if (holdTick >= HOLD_REPLAN_INTERVAL)
-                {
-                    holdTick = 0;
-                    holdCycleCount++;
-
-                    bool recovered = rebuildUsablePathToNearestTarget(rb);
-
-                    if (recovered)
-                    {
-                        cout << "[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.\n";
-                        switchMode(mode, ALERT, stableStepCount, alertFailCount, holdTick);
-                        retryCount = 0;
-                        holdCycleCount = 0;
-                        needWaitDraw = false;
-                        waitDelay = ALERT_MOVE_DELAY;
-                    }
-                    else
-                    {
-                        if (holdCycleCount == 1 || holdCycleCount % 5 == 0)
-                        {
-                            cout << "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle "
-                                 << holdCycleCount << "/" << MAX_HOLD_CYCLES << '\n';
-                        }
-
-                        if (holdCycleCount > MAX_HOLD_CYCLES)
-                        {
-                            cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
-                            shouldStop = true;
-                        }
-                    }
-                }
-            }
-
-            if (!shouldStop && !needWaitDraw && mode != HOLD_SAFE && rb.pathID >= (int)rb.path.size())
-            {
-                bool built = rebuildUsablePathToNearestTarget(rb);
-
-                if (!built)
-                {
-                    retryCount++;
-
-                    if (mode == NORMAL)
-                        switchMode(mode, ALERT, stableStepCount, alertFailCount, holdTick);
-
-                    alertFailCount++;
-
-                    printRetryMessage("[WAIT] Chua co target/path usable tam thoi.", retryCount);
-
-                    if (retryCount > MAX_RETRY_COUNT)
-                    {
-                        cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
-                        shouldStop = true;
-                    }
-
-                    if (!shouldStop && alertFailCount >= ALERT_FAIL_TO_HOLD)
-                    {
-                        cout << "[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.\n";
-                        switchMode(mode, HOLD_SAFE, stableStepCount, alertFailCount, holdTick);
-                        holdCycleCount = 0;
-                        clearPath(rb);
-                        needWaitDraw = true;
-                        waitDelay = HOLD_WAIT_DELAY;
-                    }
-                    else if (!shouldStop)
-                    {
-                        needWaitDraw = true;
-                        waitDelay = NO_TARGET_WAIT_DELAY;
-                    }
-                }
-                else
-                {
-                    // Replan thanh cong -> frame nay se move bang toc do ALERT neu dang ALERT
-                    waitDelay = (mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
-                }
-            }
-
-            if (!shouldStop && !needWaitDraw && mode != HOLD_SAFE && rb.pathID < (int)rb.path.size())
-            {
-                Cell prev = rb.pos;
-                Cell next = rb.path[rb.pathID];
-
-                if (!isFree(next.r, next.c))
-                {
-                    clearPath(rb);
-
-                    retryCount++;
-
-                    if (mode == NORMAL)
-                        switchMode(mode, ALERT, stableStepCount, alertFailCount, holdTick);
-
-                    alertFailCount++;
-
-                    printRetryMessage("[WAIT] O ke tiep dang bi chan.", retryCount);
-
-                    if (retryCount > MAX_RETRY_COUNT)
-                    {
-                        cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
-                        shouldStop = true;
-                    }
-
-                    if (!shouldStop && alertFailCount >= ALERT_FAIL_TO_HOLD)
-                    {
-                        cout << "[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.\n";
-                        switchMode(mode, HOLD_SAFE, stableStepCount, alertFailCount, holdTick);
-                        holdCycleCount = 0;
-                        needWaitDraw = true;
-                        waitDelay = HOLD_WAIT_DELAY;
-                    }
-                    else if (!shouldStop)
-                    {
-                        needWaitDraw = true;
-                        waitDelay = BLOCKED_WAIT_DELAY;
-                    }
-                }
-                else
-                {
-                    rb.pos = next;
-                    rb.trail.push_back(rb.pos);
-                    rb.pathID++;
-
-                    Edge e(prev, next);
-                    rb.edgeCount[e]++;
-
-                    rb.steps++;
-                    retryCount = 0;
-                    alertFailCount = 0;
-
-                    markCovered(rb.pos.r, rb.pos.c);
-
-                    // Neu dang ALERT thi buoc vua replan xong se chay nhanh ngay
-                    waitDelay = (mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
-
-                    if (mode == ALERT)
-                    {
-                        stableStepCount++;
-
-                        if (stableStepCount >= RECOVERY_STEPS)
-                        {
-                            switchMode(mode, NORMAL, stableStepCount, alertFailCount, holdTick);
-                            waitDelay = NORMAL_MOVE_DELAY;
-                        }
-                        else
-                        {
-                            clearPath(rb);
-                        }
-                    }
-                }
-            }
-        }
-
-        safeDrawFrame(rb, true, waitDelay);
-
-        if (shouldStop)
+        if (ctx.shouldStop)
             break;
     }
 
