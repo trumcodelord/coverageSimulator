@@ -336,6 +336,12 @@ static void processCoverageFrame(Robot &rb, CoverageContext &ctx)
     moveIfPossible(rb, ctx);
 }
 
+static void renderFrame(const Robot &rb, int delay)
+{
+    safeDrawFrame(rb, true, delay);
+    waitFrame(delay);
+}
+
 void executeCoverage(Robot &rb)
 {
     CoverageContext ctx;
@@ -346,7 +352,7 @@ void executeCoverage(Robot &rb)
     }
 
     initWindow();
-    safeDrawFrame(rb, true, NORMAL_MOVE_DELAY);
+    renderFrame(rb, NORMAL_MOVE_DELAY);
 
     while (true)
     {
@@ -359,12 +365,12 @@ void executeCoverage(Robot &rb)
             processCoverageFrame(rb, ctx);
         }
 
-        safeDrawFrame(rb, true, ctx.waitDelay);
+        renderFrame(rb, ctx.waitDelay);
 
         if (ctx.shouldStop)
             break;
     }
 
-    safeDrawFrame(rb, true, 1);
+    renderFrame(rb, 1);
     closeWindow();
 }
