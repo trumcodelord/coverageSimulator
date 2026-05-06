@@ -10,6 +10,7 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <atomic>
 
 using namespace std;
 
@@ -17,6 +18,7 @@ static const int SLEEP_MIN_MS = 250;
 static const int SLEEP_MAX_MS = 700;
 
 static thread worker;
+static atomic<bool> stopRequested(false);
 
 vector<DynamicObstacle> obstacles;
 std::mutex simMutex;
@@ -170,7 +172,7 @@ static void updateBehavior(DynamicObstacle &obs)
 
 static void dynamicObstacleLoop()
 {
-    while (true)
+    while (!stopRequested.load())
     {
         {
             lock_guard<mutex> lock(simMutex);
@@ -181,6 +183,9 @@ static void dynamicObstacleLoop()
         this_thread::sleep_for(
             chrono::milliseconds(randInt(SLEEP_MIN_MS, SLEEP_MAX_MS))
         );
+
+        if (stopRequested.load())
+            break;
 
         {
             lock_guard<mutex> lock(simMutex);
@@ -201,6 +206,8 @@ static void dynamicObstacleLoop()
 
 void initDynamicObstacle()
 {
+    stopRequested.store(false);
+
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
             dynamicBlocked[i][j] = false;
@@ -210,7 +217,13 @@ void initDynamicObstacle()
 
 void startDynamicObstacle()
 {
+    stopRequested.store(false);
     worker = thread(dynamicObstacleLoop);
+}
+
+void stopDynamicObstacle()
+{
+    stopRequested.store(true);
 }
 
 void waitDynamicObstacle()
