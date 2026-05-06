@@ -14,7 +14,8 @@ int main()
     string filename;
     cout << "Nhap duong dan file input: ";
     cin >> filename;
-    filename="tests\\"+filename+".txt";
+    filename = "tests/" + filename + ".txt";
+
     ifstream fin(filename);
     if (!fin)
     {
@@ -38,6 +39,8 @@ int main()
     initEnvironment();
 
     executeCoverage(rb);
+
+    stopEnvironment();
     waitEnvironment();
 
     CoverageStats s = collectStats(rb);
