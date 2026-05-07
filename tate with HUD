@@ -1,0 +1,88 @@
+warning: in the working copy of 'srcs/robot/coverage.cpp', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/srcs/robot/coverage.cpp b/srcs/robot/coverage.cpp[m
+[1mindex 17d4769..e94b355 100644[m
+[1m--- a/srcs/robot/coverage.cpp[m
+[1m+++ b/srcs/robot/coverage.cpp[m
+[36m@@ -83,6 +83,7 @@[m [mstatic void switchMode(CoverageContext &ctx, RobotMode newMode)[m
+     ctx.holdTick = 0;[m
+ [m
+     cout << "[MODE] -> " << modeName(ctx.mode) << '\n';[m
+[32m+[m[32m    setHUDState(modeName(ctx.mode));[m
+ }[m
+ [m
+ static void safeDrawFrame(const Robot &rb, bool showPath, int delay)[m
+[36m@@ -160,6 +161,7 @@[m [mstatic void handleHoldSafe(Robot &rb, CoverageContext &ctx)[m
+     ctx.holdTick++;[m
+     ctx.needWaitDraw = true;[m
+     ctx.waitDelay = HOLD_WAIT_DELAY;[m
+[32m+[m[32m    setHUDState("HOLD_SAFE");[m
+ [m
+     if (ctx.holdTick < HOLD_REPLAN_INTERVAL)[m
+         return;[m
+[36m@@ -190,6 +192,7 @@[m [mstatic void handleHoldSafe(Robot &rb, CoverageContext &ctx)[m
+     {[m
+         cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";[m
+         ctx.shouldStop = true;[m
+[32m+[m[32m        setHUDState("STOP");[m
+     }[m
+ }[m
+ [m
+[36m@@ -208,6 +211,7 @@[m [mstatic void handleNoUsablePath(Robot &rb, CoverageContext &ctx)[m
+     {[m
+         cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";[m
+         ctx.shouldStop = true;[m
+[32m+[m[32m        setHUDState("STOP");[m
+         return;[m
+     }[m
+ [m
+[36m@@ -219,6 +223,7 @@[m [mstatic void handleNoUsablePath(Robot &rb, CoverageContext &ctx)[m
+ [m
+     ctx.needWaitDraw = true;[m
+     ctx.waitDelay = NO_TARGET_WAIT_DELAY;[m
+[32m+[m[32m    setHUDState("WAIT");[m
+ }[m
+ [m
+ static void planPathIfNeeded(Robot &rb, CoverageContext &ctx)[m
+[36m@@ -258,6 +263,7 @@[m [mstatic void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)[m
+     {[m
+         cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";[m
+         ctx.shouldStop = true;[m
+[32m+[m[32m        setHUDState("STOP");[m
+         return;[m
+     }[m
+ [m
+[36m@@ -269,6 +275,7 @@[m [mstatic void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)[m
+ [m
+     ctx.needWaitDraw = true;[m
+     ctx.waitDelay = BLOCKED_WAIT_DELAY;[m
+[32m+[m[32m    setHUDState("WAIT");[m
+ }[m
+ [m
+ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)[m
+[36m@@ -301,6 +308,7 @@[m [mstatic void moveRobotOneStep(Robot &rb, CoverageContext &ctx)[m
+     if (ctx.mode != ALERT)[m
+         return;[m
+ [m
+[32m+[m[32m    setHUDState("ALERT");[m
+     ctx.stableStepCount++;[m
+ [m
+     if (ctx.stableStepCount >= RECOVERY_STEPS)[m
+[36m@@ -352,6 +360,7 @@[m [mvoid executeCoverage(Robot &rb)[m
+     }[m
+ [m
+     initWindow();[m
+[32m+[m[32m    setHUDState("NORMAL");[m
+     renderFrame(rb, NORMAL_MOVE_DELAY);[m
+ [m
+     while (true)[m
+[36m@@ -359,7 +368,10 @@[m [mvoid executeCoverage(Robot &rb)[m
+         {[m
+             lock_guard<mutex> lock(simMutex);[m
+             if (allCovered())[m
+[32m+[m[32m            {[m
+[32m+[m[32m                setHUDState("DONE");[m
+                 break;[m
+[32m+[m[32m            }[m
+ [m
+             beginFrame(ctx);[m
+             processCoverageFrame(rb, ctx);[m

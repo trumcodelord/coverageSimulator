@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <mutex>
+#include <algorithm>
 
 using namespace std;
 
@@ -21,6 +22,11 @@ static const int RECOVERY_STEPS = 3;
 static const int ALERT_FAIL_TO_HOLD = 4;
 static const int HOLD_REPLAN_INTERVAL = 3;
 static const int MAX_HOLD_CYCLES = 30;
+
+// How far ahead on the active path the robot should watch for dynamic blockage.
+// If this is too small, the robot reacts only when the obstacle reaches the next cell.
+// If this is too large, the robot may enter ALERT too early for distant obstacles.
+static const int PATH_ALERT_LOOKAHEAD = 8;
 
 enum RobotMode
 {
@@ -144,6 +150,24 @@ static bool rebuildUsablePathToNearestTarget(Robot &rb)
     }
 }
 
+static bool hasBlockedCellAheadOnPath(const Robot &rb)
+{
+    if (rb.pathID >= (int)rb.path.size())
+        return false;
+
+    int last = min((int)rb.path.size(), rb.pathID + PATH_ALERT_LOOKAHEAD);
+
+    for (int i = rb.pathID; i < last; i++)
+    {
+        Cell p = rb.path[i];
+
+        if (!isFree(p.r, p.c))
+            return true;
+    }
+
+    return false;
+}
+
 static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
 {
     cout << message << '\n';
@@ -152,6 +176,30 @@ static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
     clearPath(rb);
     ctx.needWaitDraw = true;
     ctx.waitDelay = HOLD_WAIT_DELAY;
+}
+
+static void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
+{
+    clearPath(rb);
+
+    if (ctx.mode == NORMAL)
+        switchMode(ctx, ALERT);
+    else
+        setHUDState("ALERT");
+
+    ctx.retryCount++;
+    ctx.alertFailCount++;
+
+    printRetryMessage("[ALERT] Dynamic obstacle nam tren active path.", ctx.retryCount);
+
+    if (ctx.alertFailCount >= ALERT_FAIL_TO_HOLD)
+    {
+        enterHoldSafe(ctx, rb, "[HOLD] Active path bi chan lien tiep, chuyen sang HOLD_SAFE.");
+        return;
+    }
+
+    ctx.needWaitDraw = true;
+    ctx.waitDelay = BLOCKED_WAIT_DELAY;
 }
 
 static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
@@ -337,6 +385,14 @@ static void processCoverageFrame(Robot &rb, CoverageContext &ctx)
 {
     if (ctx.mode == HOLD_SAFE)
         handleHoldSafe(rb, ctx);
+
+    if (!ctx.shouldStop &&
+        !ctx.needWaitDraw &&
+        ctx.mode != HOLD_SAFE &&
+        hasBlockedCellAheadOnPath(rb))
+    {
+        handleActivePathObstructed(rb, ctx);
+    }
 
     if (!ctx.shouldStop)
         planPathIfNeeded(rb, ctx);
