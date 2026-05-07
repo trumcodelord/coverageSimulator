@@ -83,6 +83,7 @@ static void switchMode(CoverageContext &ctx, RobotMode newMode)
     ctx.holdTick = 0;
 
     cout << "[MODE] -> " << modeName(ctx.mode) << '\n';
+    setHUDState(modeName(ctx.mode));
 }
 
 static void safeDrawFrame(const Robot &rb, bool showPath, int delay)
@@ -160,6 +161,7 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     ctx.holdTick++;
     ctx.needWaitDraw = true;
     ctx.waitDelay = HOLD_WAIT_DELAY;
+    setHUDState("HOLD_SAFE");
 
     if (ctx.holdTick < HOLD_REPLAN_INTERVAL)
         return;
@@ -190,6 +192,7 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     {
         cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
         ctx.shouldStop = true;
+        setHUDState("STOP");
     }
 }
 
@@ -208,6 +211,7 @@ static void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     {
         cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
         ctx.shouldStop = true;
+        setHUDState("STOP");
         return;
     }
 
@@ -219,6 +223,7 @@ static void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
 
     ctx.needWaitDraw = true;
     ctx.waitDelay = NO_TARGET_WAIT_DELAY;
+    setHUDState("WAIT");
 }
 
 static void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
@@ -258,6 +263,7 @@ static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
     {
         cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
         ctx.shouldStop = true;
+        setHUDState("STOP");
         return;
     }
 
@@ -269,6 +275,7 @@ static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     ctx.needWaitDraw = true;
     ctx.waitDelay = BLOCKED_WAIT_DELAY;
+    setHUDState("WAIT");
 }
 
 static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
@@ -301,6 +308,7 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     if (ctx.mode != ALERT)
         return;
 
+    setHUDState("ALERT");
     ctx.stableStepCount++;
 
     if (ctx.stableStepCount >= RECOVERY_STEPS)
@@ -352,6 +360,7 @@ void executeCoverage(Robot &rb)
     }
 
     initWindow();
+    setHUDState("NORMAL");
     renderFrame(rb, NORMAL_MOVE_DELAY);
 
     while (true)
@@ -359,7 +368,10 @@ void executeCoverage(Robot &rb)
         {
             lock_guard<mutex> lock(simMutex);
             if (allCovered())
+            {
+                setHUDState("DONE");
                 break;
+            }
 
             beginFrame(ctx);
             processCoverageFrame(rb, ctx);
