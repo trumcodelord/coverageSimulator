@@ -293,9 +293,11 @@ static void paintDynamicObstacles(Mat &canvas)
 static Scalar hudStateColor(const string &state)
 {
     if (state == "NONE") return Scalar(60, 60, 60);
-    if (state == "FIND") return Scalar(0, 140, 255);
-    if (state == "RUN!") return Scalar(0, 180, 0);
-    if (state == "WAIT") return Scalar(0, 0, 220);
+    if (state == "NORMAL" || state == "FIND") return Scalar(0, 140, 255);
+    if (state == "ALERT" || state == "RUN!") return Scalar(0, 180, 0);
+    if (state == "HOLD_SAFE" || state == "WAIT") return Scalar(0, 0, 220);
+    if (state == "STOP") return Scalar(0, 0, 255);
+    if (state == "DONE") return Scalar(0, 160, 0);
     return Scalar(60, 60, 60);
 }
 
