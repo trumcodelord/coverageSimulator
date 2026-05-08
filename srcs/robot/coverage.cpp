@@ -5,15 +5,34 @@
 #include <iostream>
 #include <mutex>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
 
-static const int NORMAL_MOVE_DELAY = 500;
-static const int ALERT_MOVE_DELAY  = 80;
+static constexpr int ceilDiv(int a, int b)
+{
+    return (a + b - 1) / b;
+}
 
-static const int BLOCKED_WAIT_DELAY = 120;
-static const int NO_TARGET_WAIT_DELAY = 150;
-static const int HOLD_WAIT_DELAY = 180;
+// Simulation time is intentionally separated from OpenCV rendering time.
+// Changing RENDER_DELAY_MS must not change robot behavior.
+static constexpr int SIM_TICK_MS = 20;
+static constexpr int RENDER_DELAY_MS = 30;
+static constexpr int MAX_CATCHUP_TICKS_PER_RENDER = 20;
+
+static constexpr int NORMAL_STEP_MS = 500;
+static constexpr int ALERT_STEP_MS  = 80;
+
+static constexpr int BLOCKED_WAIT_MS = 120;
+static constexpr int NO_TARGET_WAIT_MS = 150;
+static constexpr int HOLD_WAIT_MS = 180;
+
+static constexpr int NORMAL_STEP_TICKS = ceilDiv(NORMAL_STEP_MS, SIM_TICK_MS);
+static constexpr int ALERT_STEP_TICKS  = ceilDiv(ALERT_STEP_MS, SIM_TICK_MS);
+
+static constexpr int BLOCKED_WAIT_TICKS = ceilDiv(BLOCKED_WAIT_MS, SIM_TICK_MS);
+static constexpr int NO_TARGET_WAIT_TICKS = ceilDiv(NO_TARGET_WAIT_MS, SIM_TICK_MS);
+static constexpr int HOLD_WAIT_TICKS = ceilDiv(HOLD_WAIT_MS, SIM_TICK_MS);
 
 static const int MAX_RETRY_COUNT = 12;
 static const int RETRY_LOG_INTERVAL = 3;
@@ -45,16 +64,26 @@ struct CoverageContext
     int holdTick = 0;
     int holdCycleCount = 0;
 
+    int actionCooldownTicks = 0;
+
     bool shouldStop = false;
     bool needWaitDraw = false;
-    int waitDelay = NORMAL_MOVE_DELAY;
 };
 
-static void beginFrame(CoverageContext &ctx)
+static int stepTicksForMode(RobotMode mode)
+{
+    return mode == ALERT ? ALERT_STEP_TICKS : NORMAL_STEP_TICKS;
+}
+
+static void setCooldown(CoverageContext &ctx, int ticks)
+{
+    ctx.actionCooldownTicks = max(ctx.actionCooldownTicks, ticks);
+}
+
+static void beginTick(CoverageContext &ctx)
 {
     ctx.shouldStop = false;
     ctx.needWaitDraw = false;
-    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
 }
 
 static void printRetryMessage(const char *msg, int retryCount)
@@ -175,7 +204,6 @@ static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
     ctx.holdCycleCount = 0;
     clearPath(rb);
     ctx.needWaitDraw = true;
-    ctx.waitDelay = HOLD_WAIT_DELAY;
 }
 
 static void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
@@ -199,7 +227,7 @@ static void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
     }
 
     ctx.needWaitDraw = true;
-    ctx.waitDelay = BLOCKED_WAIT_DELAY;
+    setCooldown(ctx, BLOCKED_WAIT_TICKS);
 }
 
 static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
@@ -208,7 +236,7 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     ctx.holdTick++;
     ctx.needWaitDraw = true;
-    ctx.waitDelay = HOLD_WAIT_DELAY;
+    setCooldown(ctx, HOLD_WAIT_TICKS);
     setHUDState("HOLD_SAFE");
 
     if (ctx.holdTick < HOLD_REPLAN_INTERVAL)
@@ -225,8 +253,8 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         switchMode(ctx, ALERT);
         ctx.retryCount = 0;
         ctx.holdCycleCount = 0;
+        ctx.actionCooldownTicks = 0;
         ctx.needWaitDraw = false;
-        ctx.waitDelay = ALERT_MOVE_DELAY;
         return;
     }
 
@@ -270,7 +298,7 @@ static void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     }
 
     ctx.needWaitDraw = true;
-    ctx.waitDelay = NO_TARGET_WAIT_DELAY;
+    setCooldown(ctx, NO_TARGET_WAIT_TICKS);
     setHUDState("WAIT");
 }
 
@@ -289,9 +317,6 @@ static void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
         handleNoUsablePath(rb, ctx);
         return;
     }
-
-    // Replan thanh cong -> frame nay se move bang toc do ALERT neu dang ALERT
-    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
 }
 
 static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
@@ -322,7 +347,7 @@ static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
     }
 
     ctx.needWaitDraw = true;
-    ctx.waitDelay = BLOCKED_WAIT_DELAY;
+    setCooldown(ctx, BLOCKED_WAIT_TICKS);
     setHUDState("WAIT");
 }
 
@@ -350,9 +375,6 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
 
     markCovered(rb.pos.r, rb.pos.c);
 
-    // Neu dang ALERT thi buoc vua replan xong se chay nhanh ngay
-    ctx.waitDelay = (ctx.mode == ALERT ? ALERT_MOVE_DELAY : NORMAL_MOVE_DELAY);
-
     if (ctx.mode != ALERT)
         return;
 
@@ -362,7 +384,6 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     if (ctx.stableStepCount >= RECOVERY_STEPS)
     {
         switchMode(ctx, NORMAL);
-        ctx.waitDelay = NORMAL_MOVE_DELAY;
     }
     else
     {
@@ -378,17 +399,30 @@ static void moveIfPossible(Robot &rb, CoverageContext &ctx)
     if (rb.pathID >= (int)rb.path.size())
         return;
 
+    int stepsBefore = rb.steps;
     moveRobotOneStep(rb, ctx);
+
+    if (!ctx.shouldStop && !ctx.needWaitDraw && rb.steps > stepsBefore)
+        setCooldown(ctx, stepTicksForMode(ctx.mode));
 }
 
-static void processCoverageFrame(Robot &rb, CoverageContext &ctx)
+static void processCoverageTick(Robot &rb, CoverageContext &ctx)
 {
     if (ctx.mode == HOLD_SAFE)
+    {
         handleHoldSafe(rb, ctx);
+        return;
+    }
+
+    if (ctx.actionCooldownTicks > 0)
+    {
+        ctx.actionCooldownTicks--;
+        ctx.needWaitDraw = true;
+        return;
+    }
 
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
-        ctx.mode != HOLD_SAFE &&
         hasBlockedCellAheadOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
@@ -400,10 +434,10 @@ static void processCoverageFrame(Robot &rb, CoverageContext &ctx)
     moveIfPossible(rb, ctx);
 }
 
-static void renderFrame(const Robot &rb, int delay)
+static void renderFrame(const Robot &rb)
 {
-    safeDrawFrame(rb, true, delay);
-    waitFrame(delay);
+    safeDrawFrame(rb, true, RENDER_DELAY_MS);
+    waitFrame(RENDER_DELAY_MS);
 }
 
 void executeCoverage(Robot &rb)
@@ -417,28 +451,61 @@ void executeCoverage(Robot &rb)
 
     initWindow();
     setHUDState("NORMAL");
-    renderFrame(rb, NORMAL_MOVE_DELAY);
+    renderFrame(rb);
+
+    using Clock = chrono::steady_clock;
+    auto lastTime = Clock::now();
+    long long accumulatedMs = SIM_TICK_MS;
+
+    bool finished = false;
 
     while (true)
     {
+        auto now = Clock::now();
+        accumulatedMs += chrono::duration_cast<chrono::milliseconds>(now - lastTime).count();
+        lastTime = now;
+
+        int processedTicks = 0;
+
+        while (accumulatedMs >= SIM_TICK_MS &&
+               processedTicks < MAX_CATCHUP_TICKS_PER_RENDER)
         {
-            lock_guard<mutex> lock(simMutex);
-            if (allCovered())
             {
-                setHUDState("DONE");
-                break;
+                lock_guard<mutex> lock(simMutex);
+
+                if (allCovered())
+                {
+                    setHUDState("DONE");
+                    finished = true;
+                    break;
+                }
+
+                beginTick(ctx);
+                processCoverageTick(rb, ctx);
+
+                if (allCovered())
+                {
+                    setHUDState("DONE");
+                    finished = true;
+                }
             }
 
-            beginFrame(ctx);
-            processCoverageFrame(rb, ctx);
+            accumulatedMs -= SIM_TICK_MS;
+            processedTicks++;
+
+            if (ctx.shouldStop || finished)
+                break;
         }
 
-        renderFrame(rb, ctx.waitDelay);
+        if (processedTicks == MAX_CATCHUP_TICKS_PER_RENDER)
+            accumulatedMs = min(accumulatedMs, 1LL * SIM_TICK_MS * MAX_CATCHUP_TICKS_PER_RENDER);
 
-        if (ctx.shouldStop)
+        renderFrame(rb);
+
+        if (ctx.shouldStop || finished)
             break;
     }
 
-    renderFrame(rb, 1);
+    renderFrame(rb);
     closeWindow();
 }
