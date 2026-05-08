@@ -27,10 +27,9 @@ static constexpr int BLOCKED_WAIT_MS = 120;
 static constexpr int NO_TARGET_WAIT_MS = 150;
 static constexpr int HOLD_WAIT_MS = 180;
 
-// Keep ALERT visible/active long enough after a dynamic-obstacle incident.
-// Otherwise the robot can switch back to NORMAL immediately after a short reroute.
-static constexpr int ALERT_LOCK_MS = 1500;
-static constexpr int DYNAMIC_ALERT_RADIUS = 2;
+// A dynamic obstacle only forces ALERT when it is an immediate collision risk.
+// Dense background traffic should not keep the robot in ALERT forever.
+static constexpr int DYNAMIC_DANGER_RADIUS = 1;
 
 static constexpr int NORMAL_STEP_TICKS = ceilDiv(NORMAL_STEP_MS, SIM_TICK_MS);
 static constexpr int ALERT_STEP_TICKS  = ceilDiv(ALERT_STEP_MS, SIM_TICK_MS);
@@ -38,7 +37,6 @@ static constexpr int ALERT_STEP_TICKS  = ceilDiv(ALERT_STEP_MS, SIM_TICK_MS);
 static constexpr int BLOCKED_WAIT_TICKS = ceilDiv(BLOCKED_WAIT_MS, SIM_TICK_MS);
 static constexpr int NO_TARGET_WAIT_TICKS = ceilDiv(NO_TARGET_WAIT_MS, SIM_TICK_MS);
 static constexpr int HOLD_WAIT_TICKS = ceilDiv(HOLD_WAIT_MS, SIM_TICK_MS);
-static constexpr int ALERT_LOCK_TICKS = ceilDiv(ALERT_LOCK_MS, SIM_TICK_MS);
 
 static const int MAX_RETRY_COUNT = 12;
 static const int RETRY_LOG_INTERVAL = 3;
@@ -71,7 +69,6 @@ struct CoverageContext
     int holdCycleCount = 0;
 
     int actionCooldownTicks = 0;
-    int alertLockTicks = 0;
 
     bool shouldStop = false;
     bool needWaitDraw = false;
@@ -87,18 +84,10 @@ static void setCooldown(CoverageContext &ctx, int ticks)
     ctx.actionCooldownTicks = max(ctx.actionCooldownTicks, ticks);
 }
 
-static void lockAlert(CoverageContext &ctx)
-{
-    ctx.alertLockTicks = max(ctx.alertLockTicks, ALERT_LOCK_TICKS);
-}
-
 static void beginTick(CoverageContext &ctx)
 {
     ctx.shouldStop = false;
     ctx.needWaitDraw = false;
-
-    if (ctx.alertLockTicks > 0)
-        ctx.alertLockTicks--;
 }
 
 static void printRetryMessage(const char *msg, int retryCount)
@@ -212,11 +201,11 @@ static bool hasBlockedCellAheadOnPath(const Robot &rb)
     return false;
 }
 
-static bool hasNearbyDynamicObstacle(const Robot &rb)
+static bool hasImmediateDynamicDanger(const Robot &rb)
 {
-    for (int dr = -DYNAMIC_ALERT_RADIUS; dr <= DYNAMIC_ALERT_RADIUS; dr++)
+    for (int dr = -DYNAMIC_DANGER_RADIUS; dr <= DYNAMIC_DANGER_RADIUS; dr++)
     {
-        for (int dc = -DYNAMIC_ALERT_RADIUS; dc <= DYNAMIC_ALERT_RADIUS; dc++)
+        for (int dc = -DYNAMIC_DANGER_RADIUS; dc <= DYNAMIC_DANGER_RADIUS; dc++)
         {
             int r = rb.pos.r + dr;
             int c = rb.pos.c + dc;
@@ -225,7 +214,7 @@ static bool hasNearbyDynamicObstacle(const Robot &rb)
                 continue;
 
             int manhattan = abs(dr) + abs(dc);
-            if (manhattan > DYNAMIC_ALERT_RADIUS)
+            if (manhattan > DYNAMIC_DANGER_RADIUS)
                 continue;
 
             if (dynamicBlocked[r][c])
@@ -236,11 +225,10 @@ static bool hasNearbyDynamicObstacle(const Robot &rb)
     return false;
 }
 
-static bool shouldStayInAlert(const Robot &rb, const CoverageContext &ctx)
+static bool shouldStayInAlert(const Robot &rb)
 {
-    return ctx.alertLockTicks > 0 ||
-           hasBlockedCellAheadOnPath(rb) ||
-           hasNearbyDynamicObstacle(rb);
+    return hasImmediateDynamicDanger(rb) ||
+           hasBlockedCellAheadOnPath(rb);
 }
 
 static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
@@ -259,8 +247,6 @@ static void enterOrExtendAlert(CoverageContext &ctx)
         switchMode(ctx, ALERT);
     else
         setHUDState("ALERT");
-
-    lockAlert(ctx);
 }
 
 static void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
@@ -306,7 +292,6 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     {
         cout << "[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.\n";
         switchMode(ctx, ALERT);
-        lockAlert(ctx);
         ctx.retryCount = 0;
         ctx.holdCycleCount = 0;
         ctx.actionCooldownTicks = 0;
@@ -437,7 +422,7 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
 
     setHUDState("ALERT");
 
-    if (shouldStayInAlert(rb, ctx))
+    if (shouldStayInAlert(rb))
     {
         ctx.stableStepCount = 0;
         clearPath(rb);
@@ -457,7 +442,6 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
 
     if (ctx.stableStepCount >= RECOVERY_STEPS)
     {
-        ctx.alertLockTicks = 0;
         switchMode(ctx, NORMAL);
     }
     else
@@ -496,7 +480,7 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
-    if (!ctx.shouldStop && !ctx.needWaitDraw && hasNearbyDynamicObstacle(rb))
+    if (!ctx.shouldStop && !ctx.needWaitDraw && hasImmediateDynamicDanger(rb))
         enterOrExtendAlert(ctx);
 
     if (!ctx.shouldStop &&
