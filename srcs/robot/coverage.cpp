@@ -411,6 +411,8 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     Cell prev = rb.pos;
     Cell next = rb.path[rb.pathID];
 
+    bool enteredUncoveredCell = !isCovered(next.r, next.c);
+
     if (!isFree(next.r, next.c))
     {
         handleBlockedNextCell(rb, ctx);
@@ -442,7 +444,16 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (!enteredUncoveredCell)
+    {
+        ctx.stableStepCount = 0;
+        clearPath(rb);
+        return;
+    }
+
     ctx.stableStepCount++;
+    cout << "[RECOVERY] Safe uncovered step " << ctx.stableStepCount
+         << "/" << RECOVERY_STEPS << '\n';
 
     if (ctx.stableStepCount >= RECOVERY_STEPS)
     {
