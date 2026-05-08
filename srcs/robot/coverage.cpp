@@ -204,6 +204,7 @@ static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
     ctx.holdCycleCount = 0;
     clearPath(rb);
     ctx.needWaitDraw = true;
+    setCooldown(ctx, HOLD_WAIT_TICKS);
 }
 
 static void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
@@ -236,11 +237,13 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     ctx.holdTick++;
     ctx.needWaitDraw = true;
-    setCooldown(ctx, HOLD_WAIT_TICKS);
     setHUDState("HOLD_SAFE");
 
     if (ctx.holdTick < HOLD_REPLAN_INTERVAL)
+    {
+        setCooldown(ctx, HOLD_WAIT_TICKS);
         return;
+    }
 
     ctx.holdTick = 0;
     ctx.holdCycleCount++;
@@ -269,6 +272,10 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
         ctx.shouldStop = true;
         setHUDState("STOP");
+    }
+    else
+    {
+        setCooldown(ctx, HOLD_WAIT_TICKS);
     }
 }
 
@@ -408,16 +415,16 @@ static void moveIfPossible(Robot &rb, CoverageContext &ctx)
 
 static void processCoverageTick(Robot &rb, CoverageContext &ctx)
 {
-    if (ctx.mode == HOLD_SAFE)
-    {
-        handleHoldSafe(rb, ctx);
-        return;
-    }
-
     if (ctx.actionCooldownTicks > 0)
     {
         ctx.actionCooldownTicks--;
         ctx.needWaitDraw = true;
+        return;
+    }
+
+    if (ctx.mode == HOLD_SAFE)
+    {
+        handleHoldSafe(rb, ctx);
         return;
     }
 
