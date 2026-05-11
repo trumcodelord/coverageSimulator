@@ -10,7 +10,10 @@ void dijkstra(Cell start, int d[1001][1001], Cell trace[1001][1001])
 {
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
+        {
             d[i][j] = INF;
+            trace[i][j]= {0,0};
+        }
 
     priority_queue<pair<int, Cell>, vector<pair<int, Cell>>, greater<pair<int, Cell>>> pq;
 

@@ -46,6 +46,12 @@ static const int ALERT_FAIL_TO_HOLD = 4;
 static const int HOLD_REPLAN_INTERVAL = 3;
 static const int MAX_HOLD_CYCLES = 30;
 
+static const int MOVE_ENERGY_COST = 1;
+static const int ENERGY_RETURN_MARGIN = 10;
+static const int RECHARGE_WAIT_TICKS = 10;
+
+static const int DEFAULT_MAX_ENERGY = 120;
+
 // How far ahead on the active path the robot should watch for dynamic blockage.
 // If this is too small, the robot reacts only when the obstacle reaches the next cell.
 // If this is too large, the robot may enter ALERT too early for distant obstacles.
@@ -55,7 +61,9 @@ enum RobotMode
 {
     NORMAL,
     ALERT,
-    HOLD_SAFE
+    HOLD_SAFE,
+    RETURN_TO_BASE,
+    RECHARGING
 };
 
 struct CoverageContext
@@ -103,7 +111,10 @@ static const char* modeName(RobotMode mode)
 {
     if (mode == NORMAL) return "NORMAL";
     if (mode == ALERT) return "ALERT";
-    return "HOLD_SAFE";
+    if (mode == HOLD_SAFE) return "HOLD_SAFE";
+    if (mode == RETURN_TO_BASE) return "RETURN_TO_BASE";
+    if (mode == RECHARGING) return "RECHARGING";
+    return "UNKNOWN";
 }
 
 static void clearPath(Robot &rb)
@@ -131,16 +142,45 @@ static void safeDrawFrame(const Robot &rb, bool showPath, int delay)
     drawFrame(rb, showPath, delay);
 }
 
-static void initializeRobotState(Robot &rb)
+static bool isAtBase(const Robot &rb)
 {
-    rb.steps = 0;
-    rb.pathID = 0;
-    rb.path.clear();
-    rb.trail.clear();
-    rb.edgeCount.clear();
+    return rb.pos == rb.base;
+}
 
-    rb.trail.push_back(rb.pos);
-    markCovered(rb.pos.r, rb.pos.c);
+static bool rebuildUsablePathToBase(Robot &rb)
+{
+    if (isAtBase(rb))
+    {
+        clearPath(rb);
+        return true;
+    }
+
+    dijkstra(rb.pos, d, trace);
+
+    if (d[rb.base.r][rb.base.c] >= INF)
+    {
+        clearPath(rb);
+        return false;
+    }
+
+    rb.path = tracePath(rb.pos, rb.base, trace);
+
+    if ((int)rb.path.size() <= 1)
+    {
+        clearPath(rb);
+        return isAtBase(rb);
+    }
+
+    rb.pathID = 1;
+
+    Cell next = rb.path[rb.pathID];
+    if (!isFree(next.r, next.c))
+    {
+        clearPath(rb);
+        return false;
+    }
+
+    return true;
 }
 
 static bool rebuildUsablePathToNearestTarget(Robot &rb)
@@ -412,6 +452,7 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     rb.edgeCount[e]++;
 
     rb.steps++;
+    consumeEnergy(rb, MOVE_ENERGY_COST);
     ctx.retryCount = 0;
     ctx.alertFailCount = 0;
 
@@ -474,6 +515,24 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (ctx.mode == RECHARGING)
+    {
+        handleRecharging(rb, ctx);
+        return;
+    }
+
+    if (ctx.mode == RETURN_TO_BASE)
+    {
+        handleReturnToBase(rb, ctx);
+        return;
+    }
+
+    if (shouldReturnForEnergy(rb))
+    {
+        enterReturnToBase(ctx, rb);
+        return;
+    }
+
     if (ctx.mode == HOLD_SAFE)
     {
         handleHoldSafe(rb, ctx);
@@ -492,9 +551,6 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop)
         planPathIfNeeded(rb, ctx);
-
-    // A newly built path must be checked before the first move.
-    // The old order only checked the previous active path, then planned and moved immediately.
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
         hasBlockedCellAheadOnPath(rb))
@@ -503,6 +559,95 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
     }
 
     moveIfPossible(rb, ctx);
+}
+
+static void consumeEnergy(Robot &rb, int amount)
+{
+    if (amount <= 0) return;
+
+    rb.energy = max(0, rb.energy - amount);
+    rb.totalEnergyUsed += amount;
+}
+
+static int estimateCostToBase(const Robot &rb)
+{
+    dijkstra(rb.pos, d, trace);
+    return d[rb.base.r][rb.base.c];
+}
+
+static bool shouldReturnForEnergy(const Robot &rb)
+{
+    int costToBase = estimateCostToBase(rb);
+
+    if (costToBase >= INF)
+        return false;
+
+    return rb.energy <= costToBase + ENERGY_RETURN_MARGIN;
+}
+
+static void enterReturnToBase(CoverageContext &ctx, Robot &rb)
+{
+    if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
+        return;
+
+    cout << "[ENERGY] Nang luong thap, quay ve base.\n";
+
+    rb.returnCount++;
+    clearPath(rb);
+    switchMode(ctx, RETURN_TO_BASE);
+
+    if (!rebuildUsablePathToBase(rb))
+    {
+        cout << "[RETURN] Chua tim duoc duong ve base. Cho va thu lai.\n";
+        ctx.needWaitDraw = true;
+        setCooldown(ctx, BLOCKED_WAIT_TICKS);
+    }
+}
+
+static void handleReturnToBase(Robot &rb, CoverageContext &ctx)
+{
+    setHUDState("RETURN_TO_BASE");
+
+    if (isAtBase(rb))
+    {
+        clearPath(rb);
+        switchMode(ctx, RECHARGING);
+        setCooldown(ctx, RECHARGE_WAIT_TICKS);
+        return;
+    }
+
+    if (rb.pathID >= (int)rb.path.size())
+    {
+        if (!rebuildUsablePathToBase(rb))
+        {
+            ctx.needWaitDraw = true;
+            setCooldown(ctx, BLOCKED_WAIT_TICKS);
+            return;
+        }
+    }
+
+    if (hasBlockedCellAheadOnPath(rb))
+    {
+        clearPath(rb);
+        ctx.needWaitDraw = true;
+        setCooldown(ctx, BLOCKED_WAIT_TICKS);
+        return;
+    }
+
+    moveIfPossible(rb, ctx);
+}
+
+static void handleRecharging(Robot &rb, CoverageContext &ctx)
+{
+    setHUDState("RECHARGING");
+
+    rb.energy = rb.maxEnergy;
+    rb.rechargeCount++;
+
+    cout << "[RECHARGE] Da sac day pin.\n";
+
+    clearPath(rb);
+    switchMode(ctx, NORMAL);
 }
 
 static void renderFrame(const Robot &rb)

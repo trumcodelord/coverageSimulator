@@ -1427,7 +1427,7 @@
 	"types.h"
 	<vector>
 
-1775007118 c:\dev\cov_sim\srcs\world\types.h
+1778487690 c:\dev\cov_sim\srcs\world\types.h
 	<vector>
 	<map>
 
@@ -1524,13 +1524,14 @@
 1776224685 c:\dev\cov_sim\srcs\world\input.h
 	<istream>
 
-1778166340 source:c:\dev\cov_sim\srcs\robot\coverage.cpp
+1778208585 source:c:\dev\cov_sim\srcs\robot\coverage.cpp
 	"coverage.h"
 	"opencv.h"
 	"dynamic_obstacle.h"
 	<iostream>
 	<mutex>
 	<algorithm>
+	<chrono>
 
 1778035041 c:\dev\cov_sim\srcs\world\opencv.h
 	"coverage.h"

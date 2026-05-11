@@ -42,7 +42,16 @@ struct Edge
 struct Robot
 {
     Cell pos;
+    Cell base;
+
     int steps;
+    int maxEnergy;
+    int energy;
+
+    int totalEnergyUsed;
+    int returnCount;
+    int rechargeCount;
+
     std::vector<Cell> path;
     int pathID;
     std::vector<Cell> trail;
