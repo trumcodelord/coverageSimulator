@@ -26,8 +26,6 @@ static constexpr int BLOCKED_WAIT_MS = 120;
 static constexpr int NO_TARGET_WAIT_MS = 150;
 static constexpr int HOLD_WAIT_MS = 180;
 
-// A dynamic obstacle only forces ALERT when it is an immediate collision risk.
-// Dense background traffic should not keep the robot in ALERT forever.
 static constexpr int DYNAMIC_DANGER_RADIUS = 1;
 
 static constexpr int NORMAL_STEP_TICKS = ceilDiv(NORMAL_STEP_MS, SIM_TICK_MS);
@@ -56,6 +54,9 @@ static const int MIN_EMERGENCY_ENERGY = 3;
 static const int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;
 static const int PATH_ALERT_LOOKAHEAD = 8;
 
+static const int COMMAND_WAIT_TICKS = 8;
+static const MissionDirective CRITICAL_DIRECTIVE = PRESERVE;
+
 enum RobotMode
 {
     NORMAL,
@@ -63,7 +64,15 @@ enum RobotMode
     HOLD_SAFE,
     RETURN_TO_BASE,
     RECHARGING,
-    POWER_SAVE
+    POWER_SAVE,
+    WAIT_FOR_COMMAND,
+    FINAL_PUSH
+};
+
+enum MissionDirective
+{
+    PRESERVE,
+    HEROIC
 };
 
 struct CoverageContext
@@ -93,6 +102,12 @@ static void enterReturnToBase(CoverageContext &ctx, Robot &rb);
 static void handleReturnToBase(Robot &rb, CoverageContext &ctx);
 static void handleRecharging(Robot &rb, CoverageContext &ctx);
 static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message);
+static bool nearDynamicObstacle(Cell p);
+static bool rebuildUsablePathToBase(Robot &rb);
+static bool rebuildDetourPathToBase(Robot &rb);
+static void enterWaitForCommand(CoverageContext &ctx, Robot &rb, const char *message);
+static void handleWaitForCommand(Robot &rb, CoverageContext &ctx);
+static void enterFinalPush(CoverageContext &ctx, Robot &rb);
 
 static int stepTicksForMode(RobotMode mode)
 {
@@ -127,6 +142,8 @@ static const char* modeName(RobotMode mode)
     if (mode == RETURN_TO_BASE) return "RETURN_TO_BASE";
     if (mode == RECHARGING) return "RECHARGING";
     if (mode == POWER_SAVE) return "POWER_SAVE";
+    if (mode == WAIT_FOR_COMMAND) return "WAIT_FOR_COMMAND";
+    if (mode == FINAL_PUSH) return "FINAL_PUSH";
     return "UNKNOWN";
 }
 
@@ -177,6 +194,43 @@ static void initializeRobotState(Robot &rb)
 static bool isAtBase(const Robot &rb)
 {
     return rb.pos == rb.base;
+}
+
+static bool rebuildUsablePathToBase(Robot &rb)
+{
+    if (isAtBase(rb))
+    {
+        clearPath(rb);
+        return true;
+    }
+
+    dijkstra(rb.pos, d, trace);
+
+    if (d[rb.base.r][rb.base.c] >= INF)
+    {
+        clearPath(rb);
+        return false;
+    }
+
+    rb.path = tracePath(rb.pos, rb.base, trace);
+
+    if ((int)rb.path.size() <= 1)
+    {
+        clearPath(rb);
+        return isAtBase(rb);
+    }
+
+    rb.pathID = 1;
+
+    Cell next = rb.path[rb.pathID];
+
+    if (!isFree(next.r, next.c))
+    {
+        clearPath(rb);
+        return false;
+    }
+
+    return true;
 }
 
 static bool rebuildDetourPathToBase(Robot &rb)
@@ -333,6 +387,43 @@ static void enterHoldSafe(CoverageContext &ctx, Robot &rb, const char *message)
     clearPath(rb);
     ctx.needWaitDraw = true;
     setCooldown(ctx, HOLD_WAIT_TICKS);
+}
+
+static void enterFinalPush(CoverageContext &ctx, Robot &rb)
+{
+    clearPath(rb);
+    ctx.returnWaitCount = 0;
+    ctx.needWaitDraw = false;
+    ctx.actionCooldownTicks = 0;
+    switchMode(ctx, FINAL_PUSH);
+}
+
+static void enterWaitForCommand(CoverageContext &ctx, Robot &rb, const char *message)
+{
+    cout << message << '\n';
+
+    clearPath(rb);
+    ctx.needWaitDraw = true;
+    setCooldown(ctx, COMMAND_WAIT_TICKS);
+    switchMode(ctx, WAIT_FOR_COMMAND);
+}
+
+static void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
+{
+    setHUDState("WAIT_FOR_COMMAND");
+
+    if (CRITICAL_DIRECTIVE == PRESERVE)
+    {
+        enterPowerSave(ctx, rb, "[COMMAND] PRESERVE. Chuyen sang POWER_SAVE.");
+        return;
+    }
+
+    if (CRITICAL_DIRECTIVE == HEROIC)
+    {
+        cout << "[COMMAND] HEROIC. Tiep tuc nhiem vu den khi het nang luong.\n";
+        enterFinalPush(ctx, rb);
+        return;
+    }
 }
 
 static void enterOrExtendAlert(CoverageContext &ctx)
@@ -605,7 +696,7 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
-    if (shouldReturnForEnergy(rb))
+    if (ctx.mode != FINAL_PUSH && shouldReturnForEnergy(rb))
     {
         enterReturnToBase(ctx, rb);
         return;
@@ -624,8 +715,12 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
     if (!ctx.shouldStop)
         planPathIfNeeded(rb, ctx);
 
-    // A newly built path must be checked before the first move.
-    // The old order only checked the previous active path, then planned and moved immediately.
+    if (ctx.mode == WAIT_FOR_COMMAND)
+    {
+        handleWaitForCommand(rb, ctx);
+        return;
+    }
+
     if (!ctx.shouldStop &&
             !ctx.needWaitDraw &&
             hasBlockedCellAheadOnPath(rb))
@@ -718,7 +813,7 @@ static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *messag
 
     if (isCriticalEnergy(rb) && ctx.returnWaitCount > MAX_RETURN_WAIT_WHEN_CRITICAL)
     {
-        enterPowerSave(ctx, rb, "[POWER_SAVE] Nang luong nguy cap va duong ve bi chan. Dung an toan.");
+        enterWaitForCommand(ctx, rb, "[COMMAND] Nang luong nguy cap va duong ve bi chan. Xin chi thi.");
         return;
     }
 
