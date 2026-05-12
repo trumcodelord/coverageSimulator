@@ -49,7 +49,6 @@ static const int MAX_HOLD_CYCLES = 30;
 static const int MOVE_ENERGY_COST = 1;
 static const int ENERGY_RETURN_MARGIN = 10;
 static const int RECHARGE_WAIT_TICKS = 10;
-
 static const int DEFAULT_MAX_ENERGY = 120;
 
 // How far ahead on the active path the robot should watch for dynamic blockage.
@@ -81,6 +80,14 @@ struct CoverageContext
     bool shouldStop = false;
     bool needWaitDraw = false;
 };
+
+static void initializeRobotState(Robot &rb);
+static void consumeEnergy(Robot &rb, int amount);
+static int estimateCostToBase(const Robot &rb);
+static bool shouldReturnForEnergy(const Robot &rb);
+static void enterReturnToBase(CoverageContext &ctx, Robot &rb);
+static void handleReturnToBase(Robot &rb, CoverageContext &ctx);
+static void handleRecharging(Robot &rb, CoverageContext &ctx);
 
 static int stepTicksForMode(RobotMode mode)
 {
@@ -140,6 +147,25 @@ static void safeDrawFrame(const Robot &rb, bool showPath, int delay)
 {
     lock_guard<mutex> lock(simMutex);
     drawFrame(rb, showPath, delay);
+}
+
+static void initializeRobotState(Robot &rb)
+{
+    rb.steps = 0;
+    rb.pathID = 0;
+    rb.path.clear();
+    rb.trail.clear();
+    rb.edgeCount.clear();
+
+    rb.base = rb.pos;
+    rb.maxEnergy = DEFAULT_MAX_ENERGY;
+    rb.energy = rb.maxEnergy;
+    rb.totalEnergyUsed = 0;
+    rb.returnCount = 0;
+    rb.rechargeCount = 0;
+
+    rb.trail.push_back(rb.pos);
+    markCovered(rb.pos.r, rb.pos.c);
 }
 
 static bool isAtBase(const Robot &rb)
@@ -527,15 +553,15 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
-    if (shouldReturnForEnergy(rb))
-    {
-        enterReturnToBase(ctx, rb);
-        return;
-    }
-
     if (ctx.mode == HOLD_SAFE)
     {
         handleHoldSafe(rb, ctx);
+        return;
+    }
+
+    if (shouldReturnForEnergy(rb))
+    {
+        enterReturnToBase(ctx, rb);
         return;
     }
 
@@ -551,6 +577,9 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop)
         planPathIfNeeded(rb, ctx);
+
+    // A newly built path must be checked before the first move.
+    // The old order only checked the previous active path, then planned and moved immediately.
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
         hasBlockedCellAheadOnPath(rb))
