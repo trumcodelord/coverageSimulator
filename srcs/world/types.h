@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <map>
+#include <algorithm>
 
 const int INF = 1e9*2;
 
