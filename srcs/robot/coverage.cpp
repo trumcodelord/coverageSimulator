@@ -55,6 +55,13 @@ static const int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;
 static const int PATH_ALERT_LOOKAHEAD = 8;
 
 static const int COMMAND_WAIT_TICKS = 8;
+
+enum MissionDirective
+{
+    PRESERVE,
+    HEROIC
+};
+
 static const MissionDirective CRITICAL_DIRECTIVE = PRESERVE;
 
 enum RobotMode
@@ -67,12 +74,6 @@ enum RobotMode
     POWER_SAVE,
     WAIT_FOR_COMMAND,
     FINAL_PUSH
-};
-
-enum MissionDirective
-{
-    PRESERVE,
-    HEROIC
 };
 
 struct CoverageContext
@@ -684,6 +685,12 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (ctx.mode == WAIT_FOR_COMMAND)
+    {
+        handleWaitForCommand(rb, ctx);
+        return;
+    }
+
     if (ctx.mode == RETURN_TO_BASE)
     {
         handleReturnToBase(rb, ctx);
@@ -714,12 +721,6 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop)
         planPathIfNeeded(rb, ctx);
-
-    if (ctx.mode == WAIT_FOR_COMMAND)
-    {
-        handleWaitForCommand(rb, ctx);
-        return;
-    }
 
     if (!ctx.shouldStop &&
             !ctx.needWaitDraw &&
