@@ -23,9 +23,65 @@ static atomic<bool> stopRequested(false);
 vector<DynamicObstacle> obstacles;
 std::mutex simMutex;
 
+static Cell robotAvoidanceCell = {0, 0};
+static bool robotAvoidanceEnabled = false;
+
+static const int ROBOT_YIELD_RADIUS = 1;
+
 static int roundToCell(float v)
 {
     return (int)std::lround(v);
+}
+
+void setRobotAvoidanceCell(Cell pos)
+{
+    robotAvoidanceCell = pos;
+    robotAvoidanceEnabled = inBounds(pos.r, pos.c);
+}
+
+static int manhattan(Cell a, Cell b)
+{
+    return abs(a.r - b.r) + abs(a.c - b.c);
+}
+
+static Cell roundedCell(float x, float y)
+{
+    return {roundToCell(x), roundToCell(y)};
+}
+
+static Cell oneStepAheadByVelocity(const DynamicObstacle &obs)
+{
+    Cell q = obs.pos;
+
+    if (obs.vx > 0.0f) q.r += 1;
+    else if (obs.vx < 0.0f) q.r -= 1;
+    else if (obs.vy > 0.0f) q.c += 1;
+    else if (obs.vy < 0.0f) q.c -= 1;
+
+    return q;
+}
+
+static bool wouldThreatenRobot(const DynamicObstacle &obs, float nx, float ny)
+{
+    if (!robotAvoidanceEnabled)
+        return false;
+
+    if (obs.vx == 0.0f && obs.vy == 0.0f)
+        return false;
+
+    Cell next = roundedCell(nx, ny);
+    Cell front = oneStepAheadByVelocity(obs);
+
+    if (next == robotAvoidanceCell)
+        return true;
+
+    if (front == robotAvoidanceCell)
+        return true;
+
+    int curDist = manhattan(obs.pos, robotAvoidanceCell);
+    int nextDist = manhattan(next, robotAvoidanceCell);
+
+    return nextDist <= ROBOT_YIELD_RADIUS && nextDist < curDist;
 }
 
 static bool isTerrainBlocked(int r, int c)
@@ -120,6 +176,13 @@ static void moveStraight(DynamicObstacle &obs)
     float nx = obs.x + obs.vx;
     float ny = obs.y + obs.vy;
 
+    if (wouldThreatenRobot(obs, nx, ny))
+    {
+        obs.vx = 0.0f;
+        obs.vy = 0.0f;
+        return;
+    }
+
     if (!isLineFree(obs.x, obs.y, nx, ny))
     {
         obs.vx = 0.0f;
@@ -207,6 +270,9 @@ static void dynamicObstacleLoop()
 void initDynamicObstacle()
 {
     stopRequested.store(false);
+
+    robotAvoidanceCell = start;
+    robotAvoidanceEnabled = inBounds(start.r, start.c);
 
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)

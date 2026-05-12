@@ -14,8 +14,7 @@ static constexpr int ceilDiv(int a, int b)
     return (a + b - 1) / b;
 }
 
-// Simulation time is intentionally separated from OpenCV rendering time.
-// Changing RENDER_DELAY_MS must not change robot behavior.
+
 static constexpr int SIM_TICK_MS = 20;
 static constexpr int RENDER_DELAY_MS = 30;
 static constexpr int MAX_CATCHUP_TICKS_PER_RENDER = 20;
@@ -47,13 +46,14 @@ static const int HOLD_REPLAN_INTERVAL = 3;
 static const int MAX_HOLD_CYCLES = 30;
 
 static const int MOVE_ENERGY_COST = 1;
-static const int ENERGY_RETURN_MARGIN = 10;
+static const int MIN_RETURN_MARGIN = 10;
+static const int RETURN_MARGIN_DIVISOR = 3;
 static const int RECHARGE_WAIT_TICKS = 10;
 static const int DEFAULT_MAX_ENERGY = 120;
+static const int MAX_RETURN_WAIT_WHEN_CRITICAL = 3;
+static const int MIN_EMERGENCY_ENERGY = 3;
 
-// How far ahead on the active path the robot should watch for dynamic blockage.
-// If this is too small, the robot reacts only when the obstacle reaches the next cell.
-// If this is too large, the robot may enter ALERT too early for distant obstacles.
+static const int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;
 static const int PATH_ALERT_LOOKAHEAD = 8;
 
 enum RobotMode
@@ -62,7 +62,8 @@ enum RobotMode
     ALERT,
     HOLD_SAFE,
     RETURN_TO_BASE,
-    RECHARGING
+    RECHARGING,
+    POWER_SAVE
 };
 
 struct CoverageContext
@@ -74,6 +75,7 @@ struct CoverageContext
     int alertFailCount = 0;
     int holdTick = 0;
     int holdCycleCount = 0;
+    int returnWaitCount = 0;
 
     int actionCooldownTicks = 0;
 
@@ -84,10 +86,13 @@ struct CoverageContext
 static void initializeRobotState(Robot &rb);
 static void consumeEnergy(Robot &rb, int amount);
 static int estimateCostToBase(const Robot &rb);
+static int returnMarginForCost(int costToBase);
 static bool shouldReturnForEnergy(const Robot &rb);
+static bool isCriticalEnergy(const Robot &rb);
 static void enterReturnToBase(CoverageContext &ctx, Robot &rb);
 static void handleReturnToBase(Robot &rb, CoverageContext &ctx);
 static void handleRecharging(Robot &rb, CoverageContext &ctx);
+static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message);
 
 static int stepTicksForMode(RobotMode mode)
 {
@@ -121,6 +126,7 @@ static const char* modeName(RobotMode mode)
     if (mode == HOLD_SAFE) return "HOLD_SAFE";
     if (mode == RETURN_TO_BASE) return "RETURN_TO_BASE";
     if (mode == RECHARGING) return "RECHARGING";
+    if (mode == POWER_SAVE) return "POWER_SAVE";
     return "UNKNOWN";
 }
 
@@ -163,9 +169,9 @@ static void initializeRobotState(Robot &rb)
     rb.totalEnergyUsed = 0;
     rb.returnCount = 0;
     rb.rechargeCount = 0;
-
     rb.trail.push_back(rb.pos);
     markCovered(rb.pos.r, rb.pos.c);
+    setRobotAvoidanceCell(rb.pos);
 }
 
 static bool isAtBase(const Robot &rb)
@@ -173,7 +179,7 @@ static bool isAtBase(const Robot &rb)
     return rb.pos == rb.base;
 }
 
-static bool rebuildUsablePathToBase(Robot &rb)
+static bool rebuildDetourPathToBase(Robot &rb)
 {
     if (isAtBase(rb))
     {
@@ -189,23 +195,25 @@ static bool rebuildUsablePathToBase(Robot &rb)
         return false;
     }
 
-    rb.path = tracePath(rb.pos, rb.base, trace);
+    vector<Cell> candidate = tracePath(rb.pos, rb.base, trace);
 
-    if ((int)rb.path.size() <= 1)
+    if ((int)candidate.size() <= 1)
     {
         clearPath(rb);
         return isAtBase(rb);
     }
 
-    rb.pathID = 1;
-
-    Cell next = rb.path[rb.pathID];
-    if (!isFree(next.r, next.c))
+    for (int i = 1; i < (int)candidate.size(); i++)
     {
-        clearPath(rb);
-        return false;
+        if (nearDynamicObstacle(candidate[i]))
+        {
+            clearPath(rb);
+            return false;
+        }
     }
 
+    rb.path = candidate;
+    rb.pathID = 1;
     return true;
 }
 
@@ -281,6 +289,26 @@ static bool hasImmediateDynamicDanger(const Robot &rb)
 
             int manhattan = abs(dr) + abs(dc);
             if (manhattan > DYNAMIC_DANGER_RADIUS)
+                continue;
+
+            if (dynamicBlocked[r][c])
+                return true;
+        }
+    }
+
+    return false;
+}
+
+static bool nearDynamicObstacle(Cell p)
+{
+    for (int dr = -1; dr <= 1; dr++)
+    {
+        for (int dc = -1; dc <= 1; dc++)
+        {
+            int r = p.r + dr;
+            int c = p.c + dc;
+
+            if (!inBounds(r, c))
                 continue;
 
             if (dynamicBlocked[r][c])
@@ -471,6 +499,8 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     }
 
     rb.pos = next;
+    setRobotAvoidanceCell(rb.pos);
+
     rb.trail.push_back(rb.pos);
     rb.pathID++;
 
@@ -479,6 +509,15 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
 
     rb.steps++;
     consumeEnergy(rb, MOVE_ENERGY_COST);
+
+    if (rb.energy <= 0)
+    {
+        clearPath(rb);
+        ctx.shouldStop = true;
+        setHUDState("POWER_LOSS");
+        return;
+    }
+
     ctx.retryCount = 0;
     ctx.alertFailCount = 0;
 
@@ -547,6 +586,13 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (ctx.mode == POWER_SAVE)
+    {
+        setHUDState("POWER_SAVE");
+        ctx.shouldStop = true;
+        return;
+    }
+
     if (ctx.mode == RETURN_TO_BASE)
     {
         handleReturnToBase(rb, ctx);
@@ -604,14 +650,49 @@ static int estimateCostToBase(const Robot &rb)
     return d[rb.base.r][rb.base.c];
 }
 
+static int returnMarginForCost(int costToBase)
+{
+    if (costToBase >= INF)
+        return INF;
+
+    return max(MIN_RETURN_MARGIN, costToBase / RETURN_MARGIN_DIVISOR);
+}
+
 static bool shouldReturnForEnergy(const Robot &rb)
 {
+    if (isAtBase(rb))
+        return false;
+
     int costToBase = estimateCostToBase(rb);
 
     if (costToBase >= INF)
         return false;
 
-    return rb.energy <= costToBase + ENERGY_RETURN_MARGIN;
+    return rb.energy <= costToBase + returnMarginForCost(costToBase);
+}
+
+static bool isCriticalEnergy(const Robot &rb)
+{
+    if (isAtBase(rb))
+        return false;
+
+    int costToBase = estimateCostToBase(rb);
+
+    if (costToBase >= INF)
+        return rb.energy <= MIN_RETURN_MARGIN;
+
+    return rb.energy <= costToBase || rb.energy <= MIN_EMERGENCY_ENERGY;
+}
+
+static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message)
+{
+    cout << message << '\n';
+
+    clearPath(rb);
+    switchMode(ctx, POWER_SAVE);
+
+    ctx.shouldStop = true;
+    ctx.needWaitDraw = false;
 }
 
 static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *message)
@@ -620,6 +701,26 @@ static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *messag
 
     clearPath(rb);
     ctx.needWaitDraw = true;
+    ctx.returnWaitCount++;
+
+    if (ctx.returnWaitCount >= MAX_RETURN_WAIT_BEFORE_DETOUR)
+    {
+        cout << "[RETURN] Cho qua lau, thu tim duong vong.\n";
+
+        if (rebuildDetourPathToBase(rb))
+        {
+            ctx.needWaitDraw = false;
+            ctx.returnWaitCount = 0;
+            setHUDState("RETURN_DETOUR");
+            return;
+        }
+    }
+
+    if (isCriticalEnergy(rb) && ctx.returnWaitCount > MAX_RETURN_WAIT_WHEN_CRITICAL)
+    {
+        enterPowerSave(ctx, rb, "[POWER_SAVE] Nang luong nguy cap va duong ve bi chan. Dung an toan.");
+        return;
+    }
 
     setHUDState("RETURN_WAIT");
     setCooldown(ctx, BLOCKED_WAIT_TICKS);
@@ -633,6 +734,7 @@ static void enterReturnToBase(CoverageContext &ctx, Robot &rb)
     cout << "[ENERGY] Nang luong thap, quay ve base.\n";
 
     rb.returnCount++;
+    ctx.returnWaitCount = 0;
     clearPath(rb);
     switchMode(ctx, RETURN_TO_BASE);
 

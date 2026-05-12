@@ -408,3 +408,13 @@ Dynamic blocked cells: 3
 Coverage rate: 100 %
 ===========================
 
+===== COVERAGE STATS =====
+Total steps: 156
+Total edges: 156
+Overlap edges: 42
+Initial free cells: 75
+Covered cells: 75
+Dynamic blocked cells: 3
+Coverage rate: 100 %
+===========================
+
