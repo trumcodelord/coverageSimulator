@@ -569,8 +569,8 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
         enterOrExtendAlert(ctx);
 
     if (!ctx.shouldStop &&
-        !ctx.needWaitDraw &&
-        hasBlockedCellAheadOnPath(rb))
+            !ctx.needWaitDraw &&
+            hasBlockedCellAheadOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }
@@ -581,8 +581,8 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
     // A newly built path must be checked before the first move.
     // The old order only checked the previous active path, then planned and moved immediately.
     if (!ctx.shouldStop &&
-        !ctx.needWaitDraw &&
-        hasBlockedCellAheadOnPath(rb))
+            !ctx.needWaitDraw &&
+            hasBlockedCellAheadOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }
@@ -614,6 +614,17 @@ static bool shouldReturnForEnergy(const Robot &rb)
     return rb.energy <= costToBase + ENERGY_RETURN_MARGIN;
 }
 
+static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *message)
+{
+    cout << message << '\n';
+
+    clearPath(rb);
+    ctx.needWaitDraw = true;
+
+    setHUDState("RETURN_WAIT");
+    setCooldown(ctx, BLOCKED_WAIT_TICKS);
+}
+
 static void enterReturnToBase(CoverageContext &ctx, Robot &rb)
 {
     if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
@@ -627,9 +638,7 @@ static void enterReturnToBase(CoverageContext &ctx, Robot &rb)
 
     if (!rebuildUsablePathToBase(rb))
     {
-        cout << "[RETURN] Chua tim duoc duong ve base. Cho va thu lai.\n";
-        ctx.needWaitDraw = true;
-        setCooldown(ctx, BLOCKED_WAIT_TICKS);
+        waitReturnToBase(ctx, rb, "[RETURN] Chua tim duoc duong ve base. Cho va thu lai.");
     }
 }
 
@@ -645,25 +654,44 @@ static void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    // RETURN_TO_BASE la che do an toan, khong duoc lao vao vat can dong.
+    if (hasImmediateDynamicDanger(rb))
+    {
+        waitReturnToBase(ctx, rb, "[RETURN] Vat can dong qua gan, dung cho an toan.");
+        return;
+    }
+
     if (rb.pathID >= (int)rb.path.size())
     {
         if (!rebuildUsablePathToBase(rb))
         {
-            ctx.needWaitDraw = true;
-            setCooldown(ctx, BLOCKED_WAIT_TICKS);
+            waitReturnToBase(ctx, rb, "[RETURN] Duong ve base tam thoi bi chan. Thu lai sau.");
             return;
         }
     }
 
     if (hasBlockedCellAheadOnPath(rb))
     {
-        clearPath(rb);
-        ctx.needWaitDraw = true;
-        setCooldown(ctx, BLOCKED_WAIT_TICKS);
+        waitReturnToBase(ctx, rb, "[RETURN] Active return path bi chan, cho/replan.");
         return;
     }
 
-    moveIfPossible(rb, ctx);
+    if (rb.pathID >= (int)rb.path.size())
+        return;
+
+    Cell next = rb.path[rb.pathID];
+
+    if (!isFree(next.r, next.c))
+    {
+        waitReturnToBase(ctx, rb, "[RETURN] O tiep theo khong an toan, dung cho.");
+        return;
+    }
+
+    int stepsBefore = rb.steps;
+    moveRobotOneStep(rb, ctx);
+
+    if (!ctx.shouldStop && !ctx.needWaitDraw && rb.steps > stepsBefore)
+        setCooldown(ctx, stepTicksForMode(ctx.mode));
 }
 
 static void handleRecharging(Robot &rb, CoverageContext &ctx)
@@ -713,7 +741,7 @@ void executeCoverage(Robot &rb)
         int processedTicks = 0;
 
         while (accumulatedMs >= SIM_TICK_MS &&
-               processedTicks < MAX_CATCHUP_TICKS_PER_RENDER)
+                processedTicks < MAX_CATCHUP_TICKS_PER_RENDER)
         {
             {
                 lock_guard<mutex> lock(simMutex);
