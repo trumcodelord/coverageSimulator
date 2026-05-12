@@ -295,8 +295,11 @@ static Scalar hudStateColor(const string &state)
     if (state == "NONE") return Scalar(60, 60, 60);
     if (state == "NORMAL" || state == "FIND") return Scalar(0, 140, 255);
     if (state == "ALERT" || state == "RUN!") return Scalar(0, 180, 0);
-    if (state == "HOLD_SAFE" || state == "WAIT") return Scalar(0, 0, 220);
-    if (state == "STOP") return Scalar(0, 0, 255);
+    if (state == "HOLD_SAFE" || state == "WAIT" || state == "WAIT_FOR_COMMAND") return Scalar(0, 0, 220);
+    if (state == "RETURN_TO_BASE" || state == "RETURN_WAIT" || state == "RETURN_DETOUR") return Scalar(0, 165, 255);
+    if (state == "RECHARGING") return Scalar(180, 80, 0);
+    if (state == "POWER_SAVE") return Scalar(120, 120, 120);
+    if (state == "STOP" || state == "FINAL_PUSH" || state == "POWER_LOSS") return Scalar(0, 0, 255);
     if (state == "DONE") return Scalar(0, 160, 0);
     return Scalar(60, 60, 60);
 }
@@ -307,16 +310,20 @@ static void paintHUD(Mat &canvas, const Robot &rb, int delay)
     int currentPathLength = (int)rb.path.size();
 
     string text1 = "Steps: " + to_string(rb.steps);
-    string text2 = "Frame delay: " + to_string(delay) + " ms";
-    string text3 = string("Active path: ") + (hasActivePath ? "YES" : "NO");
-    string text4 = "Current path length: " + to_string(currentPathLength);
-    string text5 = "State: " + hudState;
+    string text2 = "Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy);
+    string text3 = "Used: " + to_string(rb.totalEnergyUsed)
+                 + " | Returns: " + to_string(rb.returnCount)
+                 + " | Recharges: " + to_string(rb.rechargeCount);
+    string text4 = string("Active path: ") + (hasActivePath ? "YES" : "NO");
+    string text5 = "Current path length: " + to_string(currentPathLength);
+    string text6 = "State: " + hudState;
 
     putText(canvas, text1, Point(20, 30), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
     putText(canvas, text2, Point(20, 60), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
     putText(canvas, text3, Point(20, 90), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
     putText(canvas, text4, Point(20, 120), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text5, Point(20, 150), FONT_HERSHEY_SIMPLEX, 0.95, hudStateColor(hudState), 2, LINE_AA);
+    putText(canvas, text5, Point(20, 150), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
+    putText(canvas, text6, Point(20, 185), FONT_HERSHEY_SIMPLEX, 0.95, hudStateColor(hudState), 2, LINE_AA);
 }
 
 void drawFrame(const Robot &rb, bool showPath, int delay)
