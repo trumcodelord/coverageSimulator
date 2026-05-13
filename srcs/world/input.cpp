@@ -2,7 +2,6 @@
 #include "grid.h"
 #include "dynamic_obstacle.h"
 
-#include <iostream>
 #include <string>
 #include <vector>
 #include <cctype>
@@ -38,6 +37,9 @@ void readGrid(istream &in)
 
     rows = (int)lines.size();
     cols = (int)lines[0].size();
+
+    if (rows > 1000 || cols > 1000)
+        throw runtime_error("Map qua lon. Gioi han hien tai la 1000x1000.");
 
     for (int i = 1; i < (int)lines.size(); i++)
     {

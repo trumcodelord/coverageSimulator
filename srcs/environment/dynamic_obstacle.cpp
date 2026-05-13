@@ -8,7 +8,6 @@
 #include <thread>
 #include <chrono>
 #include <cmath>
-#include <algorithm>
 #include <vector>
 #include <atomic>
 
@@ -84,12 +83,6 @@ static bool wouldThreatenRobot(const DynamicObstacle &obs, float nx, float ny)
     return nextDist <= ROBOT_YIELD_RADIUS && nextDist < curDist;
 }
 
-static bool isTerrainBlocked(int r, int c)
-{
-    if (!inBounds(r, c)) return true;
-    return blocked[r][c];
-}
-
 static bool canPlace(int r, int c)
 {
     if (!inBounds(r, c)) return false;
@@ -109,11 +102,9 @@ void addObstacle(int r, int c, ObstacleType type)
 
     obs.dir = 0;
     obs.path.clear();
-    obs.pathIndex = 0;
     obs.stateTick = 0;
     obs.waitTick = 0;
     obs.moveTick = 0;
-    obs.extraTick = 0;
 
     obs.x = (float)r;
     obs.y = (float)c;
@@ -147,7 +138,7 @@ static bool isLineFree(float x1, float y1, float x2, float y2)
 
     while (true)
     {
-        if (isTerrainBlocked(r, c))
+        if (!inBounds(r, c) || blocked[r][c])
             return false;
 
         if (r == r2 && c == c2)
@@ -278,6 +269,10 @@ void initDynamicObstacle()
 void startDynamicObstacle()
 {
     stopRequested.store(false);
+
+    if (obstacles.empty())
+        return;
+
     worker = thread(dynamicObstacleLoop);
 }
 

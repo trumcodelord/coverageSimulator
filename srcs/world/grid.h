@@ -8,7 +8,7 @@ extern Cell start;
 extern bool blocked[1001][1001];
 extern bool covered[1001][1001];
 extern bool dynamicBlocked[1001][1001];
-extern int dr[5], dc[5];
+extern const int dr[5], dc[5];
 extern int initialFreeCells;
 
 bool inBounds(int r, int c);

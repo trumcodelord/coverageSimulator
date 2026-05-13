@@ -9,11 +9,7 @@ using namespace std;
 
 static const int GUARD_WAIT_CENTER_MIN = 3;
 static const int GUARD_WAIT_CENTER_MAX = 6;
-static const int GUARD_WAIT_OUT_MIN = 2;
-static const int GUARD_WAIT_OUT_MAX = 4;
 static const int GUARD_MAX_RADIUS = 2;
-
-
 
 static Cell nextCell(Cell p, int dir)
 {
@@ -91,9 +87,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
     obs.vx = 0.0f;
     obs.vy = 0.0f;
 
-
-
-
     if (obs.state == GUARD_WAIT_CENTER)
     {
         obs.stateTick++;
@@ -114,9 +107,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
         return;
     }
 
-
-
-
     if (obs.state == GUARD_MOVE_OUT)
     {
         Cell q = nextCell(obs.pos, obs.dir);
@@ -133,25 +123,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
         obs.stateTick = 0;
         return;
     }
-
-
-
-
-    if (obs.state == GUARD_WAIT_OUT)
-    {
-        obs.stateTick++;
-
-        if (obs.stateTick >= obs.waitTick)
-        {
-            obs.state = GUARD_MOVE_BACK;
-            obs.stateTick = 0;
-        }
-
-        return;
-    }
-
-
-
 
     if (obs.state == GUARD_MOVE_BACK)
     {

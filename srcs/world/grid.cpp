@@ -5,8 +5,8 @@ using namespace std;
 int rows, cols;
 Cell start;
 bool blocked[1001][1001], covered[1001][1001], dynamicBlocked[1001][1001];
-int dr[5] = {0, 1, 0, -1, 0};
-int dc[5] = {0, 0, 1, 0, -1};
+const int dr[5] = {0, 1, 0, -1, 0};
+const int dc[5] = {0, 0, 1, 0, -1};
 int initialFreeCells = 0;
 
 bool inBounds(int r, int c)

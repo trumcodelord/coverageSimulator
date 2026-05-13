@@ -267,34 +267,6 @@ static void paintTrail(Mat &canvas, const Robot &rb)
     }
 }
 
-static Mat rotateIconForOverlay(const Mat &src, int drawSize, double angleDeg)
-{
-    if (src.empty())
-        return src;
-
-    if (drawSize <= 0)
-        return src;
-
-    Mat resized;
-    resize(src, resized, Size(drawSize, drawSize));
-
-    Point2f center((resized.cols - 1) / 2.0f, (resized.rows - 1) / 2.0f);
-    Mat rot = getRotationMatrix2D(center, angleDeg, 1.0);
-
-    Mat dst;
-    warpAffine(
-        resized,
-        dst,
-        rot,
-        resized.size(),
-        INTER_LINEAR,
-        BORDER_CONSTANT,
-        Scalar(0, 0, 0, 0)
-    );
-
-    return dst;
-}
-
 static double vehicleRotationAngleDeg(const DynamicObstacle &obs)
 {
     if (obs.dir == 0) return 180.0;   // down

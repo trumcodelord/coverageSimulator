@@ -33,11 +33,9 @@ struct DynamicObstacle
     int dir = 0;
     ObstacleState state = RANDOM_WAIT;
     std::vector<Cell> path;
-    int pathIndex = 0;
     int stateTick = 0;
     int waitTick = 0;
     int moveTick = 0;
-    int extraTick = 0;
     float x = 0.0f, y = 0.0f;
     float vx = 0.0f, vy = 0.0f;
 };
