@@ -1,0 +1,10 @@
+===== COVERAGE STATS =====
+Total steps: 47
+Total edges: 47
+Overlap edges: 4
+Initial free cells: 49
+Covered cells: 44
+Dynamic blocked cells: 0
+Coverage rate: 89.7959 %
+===========================
+

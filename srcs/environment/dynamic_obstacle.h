@@ -18,7 +18,6 @@ enum ObstacleState
 
     GUARD_WAIT_CENTER,
     GUARD_MOVE_OUT,
-    GUARD_WAIT_OUT,
     GUARD_MOVE_BACK,
 
     RANDOM_WAIT,
