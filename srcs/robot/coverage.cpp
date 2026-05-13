@@ -53,6 +53,8 @@ static const int MIN_EMERGENCY_ENERGY = 3;
 
 static const int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;
 static const int PATH_ALERT_LOOKAHEAD = 8;
+static const int MIN_RETURN_WAIT_BEFORE_YIELD = 2;
+static const int MAX_YIELD_CANDIDATE_COST = 3;
 
 static const int COMMAND_WAIT_TICKS = 8;
 
@@ -109,6 +111,7 @@ static bool rebuildDetourPathToBase(Robot &rb);
 static void enterWaitForCommand(CoverageContext &ctx, Robot &rb, const char *message);
 static void handleWaitForCommand(Robot &rb, CoverageContext &ctx);
 static void enterFinalPush(CoverageContext &ctx, Robot &rb);
+static bool tryTacticalYieldMove(Robot &rb, CoverageContext &ctx);
 
 static int stepTicksForMode(RobotMode mode)
 {
@@ -791,6 +794,91 @@ static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message)
     ctx.needWaitDraw = false;
 }
 
+static bool isUsefulYieldCell(const Robot &rb, Cell p)
+{
+    if (!inBounds(p.r, p.c))
+        return false;
+
+    if (!isFree(p.r, p.c))
+        return false;
+
+    if (!isCovered(p.r, p.c))
+        return false;
+
+    if (nearDynamicObstacle(p))
+        return false;
+
+    if (p == rb.pos)
+        return false;
+
+    return true;
+}
+
+static bool tryTacticalYieldMove(Robot &rb, CoverageContext &ctx)
+{
+    dijkstra(rb.pos, d, trace);
+
+    Cell best = {0, 0};
+    int bestScore = INF;
+
+    for (int r = 1; r <= rows; r++)
+    {
+        for (int c = 1; c <= cols; c++)
+        {
+            Cell p = {r, c};
+
+            if (!isUsefulYieldCell(rb, p))
+                continue;
+
+            if (d[r][c] <= 0 || d[r][c] > MAX_YIELD_CANDIDATE_COST)
+                continue;
+
+            int costToBaseFromP = INF;
+
+            dijkstra(p, d, trace);
+            costToBaseFromP = d[rb.base.r][rb.base.c];
+
+            if (costToBaseFromP >= INF)
+                continue;
+
+            int score = d[r][c] + costToBaseFromP;
+
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = p;
+            }
+
+            dijkstra(rb.pos, d, trace);
+        }
+    }
+
+    if (best == Cell{0, 0})
+        return false;
+
+    dijkstra(rb.pos, d, trace);
+    vector<Cell> yieldPath = tracePath(rb.pos, best, trace);
+
+    if ((int)yieldPath.size() <= 1)
+        return false;
+
+    rb.path = yieldPath;
+    rb.pathID = 1;
+
+    int stepsBefore = rb.steps;
+    moveRobotOneStep(rb, ctx);
+
+    if (ctx.shouldStop || ctx.needWaitDraw)
+        return false;
+
+    if (rb.steps <= stepsBefore)
+        return false;
+
+    clearPath(rb);
+    setRobotAvoidanceCell(rb.pos);
+    return true;
+}
+
 static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *message)
 {
     cout << message << '\n';
@@ -798,6 +886,20 @@ static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *messag
     clearPath(rb);
     ctx.needWaitDraw = true;
     ctx.returnWaitCount++;
+
+    if (ctx.returnWaitCount >= MIN_RETURN_WAIT_BEFORE_YIELD &&
+            !isCriticalEnergy(rb))
+    {
+        if (tryTacticalYieldMove(rb, ctx))
+        {
+            cout << "[YIELD] Robot tam lui de giai phong diem nghen.\n";
+            ctx.needWaitDraw = false;
+            ctx.returnWaitCount = 0;
+            setHUDState("YIELD");
+            setCooldown(ctx, stepTicksForMode(ctx.mode));
+            return;
+        }
+    }
 
     if (ctx.returnWaitCount >= MAX_RETURN_WAIT_BEFORE_DETOUR)
     {
@@ -904,12 +1006,6 @@ static void handleRecharging(Robot &rb, CoverageContext &ctx)
     clearPath(rb);
     switchMode(ctx, NORMAL);
 }
-
-static void enterReturnToBase(
-    CoverageContext &ctx,
-    Robot &rb,
-    const char *message = "[ENERGY] Nang luong thap, quay ve base."
-);
 
 static void handleCoverageCompletion(CoverageContext &ctx, Robot &rb, bool &finished)
 {
