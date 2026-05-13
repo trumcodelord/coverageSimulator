@@ -237,12 +237,6 @@ static void dynamicObstacleLoop()
 {
     while (!stopRequested.load())
     {
-        {
-            lock_guard<mutex> lock(simMutex);
-            if (allCovered())
-                break;
-        }
-
         this_thread::sleep_for(
             chrono::milliseconds(randInt(SLEEP_MIN_MS, SLEEP_MAX_MS))
         );

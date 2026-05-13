@@ -33,3 +33,10 @@ Thumbs.db
 # ===== Others =====
 *.bak
 *.swp
+
+bin/Debug/
+obj/Debug/
+coverage_log.txt
+cov_sim.depend
+*.o
+*.exe

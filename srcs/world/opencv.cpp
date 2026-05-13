@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 using namespace std;
 using namespace cv;
@@ -266,6 +267,44 @@ static void paintTrail(Mat &canvas, const Robot &rb)
     }
 }
 
+static Mat rotateIconForOverlay(const Mat &src, int drawSize, double angleDeg)
+{
+    if (src.empty())
+        return src;
+
+    if (drawSize <= 0)
+        return src;
+
+    Mat resized;
+    resize(src, resized, Size(drawSize, drawSize));
+
+    Point2f center((resized.cols - 1) / 2.0f, (resized.rows - 1) / 2.0f);
+    Mat rot = getRotationMatrix2D(center, angleDeg, 1.0);
+
+    Mat dst;
+    warpAffine(
+        resized,
+        dst,
+        rot,
+        resized.size(),
+        INTER_LINEAR,
+        BORDER_CONSTANT,
+        Scalar(0, 0, 0, 0)
+    );
+
+    return dst;
+}
+
+static double vehicleRotationAngleDeg(const DynamicObstacle &obs)
+{
+    if (obs.dir == 0) return 180.0;   // down
+    if (obs.dir == 1) return -90.0;   // right
+    if (obs.dir == 2) return 0.0;     // up
+    if (obs.dir == 3) return 90.0;    // left
+
+    return 0.0;
+}
+
 static void paintDynamicObstacles(Mat &canvas)
 {
     for (const auto &obs : obstacles)
@@ -280,7 +319,14 @@ static void paintDynamicObstacles(Mat &canvas)
         else if (obs.type == ObstacleType::VEHICLE)
         {
             int size = max(20, (int)(CELL_SIZE * 1.10));
-            overlayImage(canvas, iconVehicle, center, size);
+
+            Mat rotatedVehicle = rotateIconForOverlay(
+                iconVehicle,
+                size,
+                vehicleRotationAngleDeg(obs)
+            );
+
+            overlayImage(canvas, rotatedVehicle, center, size);
         }
         else if (obs.type == ObstacleType::RANDOM)
         {
@@ -304,26 +350,154 @@ static Scalar hudStateColor(const string &state)
     return Scalar(60, 60, 60);
 }
 
+static bool fitHUDInBox(
+    const vector<string> &lines,
+    const Rect &box,
+    double &fontScale,
+    int &lineStep,
+    int &thickness
+)
+{
+    if (box.width <= 0 || box.height <= 0)
+        return false;
+
+    const int padding = 10;
+    const int fontFace = FONT_HERSHEY_SIMPLEX;
+
+    for (double scale = 0.75; scale >= 0.38; scale -= 0.05)
+    {
+        int t = (scale >= 0.55) ? 2 : 1;
+        int maxTextWidth = 0;
+        int maxTextHeight = 0;
+
+        for (const string &line : lines)
+        {
+            int baseline = 0;
+            Size textSize = getTextSize(line, fontFace, scale, t, &baseline);
+            maxTextWidth = max(maxTextWidth, textSize.width);
+            maxTextHeight = max(maxTextHeight, textSize.height + baseline);
+        }
+
+        int step = max(16, (int)(maxTextHeight * 1.45));
+        int totalHeight = step * (int)lines.size();
+
+        if (maxTextWidth + 2 * padding <= box.width &&
+            totalHeight + 2 * padding <= box.height)
+        {
+            fontScale = scale;
+            lineStep = step;
+            thickness = t;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool chooseHUDBox(
+    const vector<string> &lines,
+    Rect &chosenBox,
+    double &fontScale,
+    int &lineStep,
+    int &thickness
+)
+{
+    int gridLeft = OFFSET_X;
+    int gridTop = OFFSET_Y;
+    int gridRight = OFFSET_X + cols * CELL_SIZE;
+    int gridBottom = OFFSET_Y + rows * CELL_SIZE;
+
+    const int gap = 12;
+    const int edge = 10;
+
+    vector<Rect> candidates;
+
+    candidates.push_back(Rect(
+        gridRight + gap,
+        edge,
+        max(0, SCREEN_W - gridRight - gap - edge),
+        max(0, SCREEN_H - 2 * edge)
+    ));
+
+    candidates.push_back(Rect(
+        edge,
+        edge,
+        max(0, gridLeft - gap - edge),
+        max(0, SCREEN_H - 2 * edge)
+    ));
+
+    candidates.push_back(Rect(
+        edge,
+        gridBottom + gap,
+        max(0, SCREEN_W - 2 * edge),
+        max(0, SCREEN_H - gridBottom - gap - edge)
+    ));
+
+    candidates.push_back(Rect(
+        edge,
+        edge,
+        max(0, SCREEN_W - 2 * edge),
+        max(0, gridTop - gap - edge)
+    ));
+
+    for (const Rect &box : candidates)
+    {
+        if (fitHUDInBox(lines, box, fontScale, lineStep, thickness))
+        {
+            chosenBox = box;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void paintHUD(Mat &canvas, const Robot &rb, int delay)
 {
     bool hasActivePath = (rb.pathID < (int)rb.path.size());
     int currentPathLength = (int)rb.path.size();
 
-    string text1 = "Steps: " + to_string(rb.steps);
-    string text2 = "Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy);
-    string text3 = "Used: " + to_string(rb.totalEnergyUsed)
-                 + " | Returns: " + to_string(rb.returnCount)
-                 + " | Recharges: " + to_string(rb.rechargeCount);
-    string text4 = string("Active path: ") + (hasActivePath ? "YES" : "NO");
-    string text5 = "Current path length: " + to_string(currentPathLength);
-    string text6 = "State: " + hudState;
+    vector<string> lines;
+    lines.push_back("Steps: " + to_string(rb.steps));
+    lines.push_back("Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy));
+    lines.push_back("Used: " + to_string(rb.totalEnergyUsed));
+    lines.push_back("Returns: " + to_string(rb.returnCount));
+    lines.push_back("Recharges: " + to_string(rb.rechargeCount));
+    lines.push_back(string("Active path: ") + (hasActivePath ? "YES" : "NO"));
+    lines.push_back("Path length: " + to_string(currentPathLength));
+    lines.push_back("State: " + hudState);
 
-    putText(canvas, text1, Point(20, 30), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text2, Point(20, 60), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text3, Point(20, 90), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text4, Point(20, 120), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text5, Point(20, 150), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(40, 40, 40), 2, LINE_AA);
-    putText(canvas, text6, Point(20, 185), FONT_HERSHEY_SIMPLEX, 0.95, hudStateColor(hudState), 2, LINE_AA);
+    Rect hudBox;
+    double fontScale = 0.0;
+    int lineStep = 0;
+    int thickness = 1;
+
+    if (!chooseHUDBox(lines, hudBox, fontScale, lineStep, thickness))
+        return;
+
+    const int padding = 10;
+    const int fontFace = FONT_HERSHEY_SIMPLEX;
+
+    Point origin(hudBox.x + padding, hudBox.y + padding + lineStep);
+
+    for (int i = 0; i < (int)lines.size(); i++)
+    {
+        Scalar color = Scalar(40, 40, 40);
+
+        if (i == (int)lines.size() - 1)
+            color = hudStateColor(hudState);
+
+        putText(
+            canvas,
+            lines[i],
+            Point(origin.x, origin.y + i * lineStep),
+            fontFace,
+            fontScale,
+            color,
+            thickness,
+            LINE_AA
+        );
+    }
 }
 
 void drawFrame(const Robot &rb, bool showPath, int delay)

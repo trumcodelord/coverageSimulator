@@ -1427,9 +1427,10 @@
 	"types.h"
 	<vector>
 
-1778487690 c:\dev\cov_sim\srcs\world\types.h
+1778601033 c:\dev\cov_sim\srcs\world\types.h
 	<vector>
 	<map>
+	<algorithm>
 
 1776256672 source:c:\dev\cov_sim\srcs\world\image_utils.cpp
 	<opencv2/opencv.hpp>
@@ -1451,7 +1452,7 @@
 	"types.h"
 	<string>
 
-1778549842 source:c:\dev\cov_sim\srcs\environment\dynamic_obstacle.cpp
+1778636902 source:c:\dev\cov_sim\srcs\environment\dynamic_obstacle.cpp
 	"dynamic_obstacle.h"
 	"grid.h"
 	"rng.h"
@@ -1524,7 +1525,7 @@
 1776224685 c:\dev\cov_sim\srcs\world\input.h
 	<istream>
 
-1778550427 source:c:\dev\cov_sim\srcs\robot\coverage.cpp
+1778601033 source:c:\dev\cov_sim\srcs\robot\coverage.cpp
 	"coverage.h"
 	"opencv.h"
 	"dynamic_obstacle.h"
@@ -1551,7 +1552,7 @@
 	<cctype>
 	<stdexcept>
 
-1778165480 source:c:\dev\cov_sim\srcs\world\opencv.cpp
+1778635560 source:c:\dev\cov_sim\srcs\world\opencv.cpp
 	"opencv.h"
 	"grid.h"
 	"dynamic_obstacle.h"
@@ -1560,6 +1561,7 @@
 	<algorithm>
 	<cmath>
 	<string>
+	<vector>
 
 1775662945 c:\dev\cov_sim\srcs\world\image_utils.h
 	<opencv2/opencv.hpp>
