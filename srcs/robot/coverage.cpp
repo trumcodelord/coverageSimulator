@@ -89,6 +89,7 @@ struct CoverageContext
 
     int actionCooldownTicks = 0;
 
+    bool coverageComplete = false;
     bool shouldStop = false;
     bool needWaitDraw = false;
 };
@@ -99,7 +100,6 @@ static int estimateCostToBase(const Robot &rb);
 static int returnMarginForCost(int costToBase);
 static bool shouldReturnForEnergy(const Robot &rb);
 static bool isCriticalEnergy(const Robot &rb);
-static void enterReturnToBase(CoverageContext &ctx, Robot &rb);
 static void handleReturnToBase(Robot &rb, CoverageContext &ctx);
 static void handleRecharging(Robot &rb, CoverageContext &ctx);
 static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message);
@@ -822,12 +822,12 @@ static void waitReturnToBase(CoverageContext &ctx, Robot &rb, const char *messag
     setCooldown(ctx, BLOCKED_WAIT_TICKS);
 }
 
-static void enterReturnToBase(CoverageContext &ctx, Robot &rb)
+static void enterReturnToBase(CoverageContext &ctx, Robot &rb, const char *message)
 {
     if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
         return;
 
-    cout << "[ENERGY] Nang luong thap, quay ve base.\n";
+    cout << message << '\n';
 
     rb.returnCount++;
     ctx.returnWaitCount = 0;
@@ -905,6 +905,40 @@ static void handleRecharging(Robot &rb, CoverageContext &ctx)
     switchMode(ctx, NORMAL);
 }
 
+static void enterReturnToBase(
+    CoverageContext &ctx,
+    Robot &rb,
+    const char *message = "[ENERGY] Nang luong thap, quay ve base."
+);
+
+static void handleCoverageCompletion(CoverageContext &ctx, Robot &rb, bool &finished)
+{
+    if (!allCovered())
+        return;
+
+    ctx.coverageComplete = true;
+
+    if (isAtBase(rb))
+    {
+        clearPath(rb);
+        setHUDState("DONE");
+        finished = true;
+        return;
+    }
+
+    if (ctx.mode == POWER_SAVE || ctx.mode == WAIT_FOR_COMMAND)
+        return;
+
+    if (ctx.mode != RETURN_TO_BASE && ctx.mode != RECHARGING)
+    {
+        enterReturnToBase(
+            ctx,
+            rb,
+            "[MISSION] Da phu het ban do. Quay ve base de ket thuc nhiem vu."
+        );
+    }
+}
+
 static void renderFrame(const Robot &rb)
 {
     safeDrawFrame(rb, true, RENDER_DELAY_MS);
@@ -944,21 +978,17 @@ void executeCoverage(Robot &rb)
             {
                 lock_guard<mutex> lock(simMutex);
 
-                if (allCovered())
-                {
-                    setHUDState("DONE");
-                    finished = true;
-                    break;
-                }
-
                 beginTick(ctx);
-                processCoverageTick(rb, ctx);
 
-                if (allCovered())
-                {
-                    setHUDState("DONE");
-                    finished = true;
-                }
+                handleCoverageCompletion(ctx, rb, finished);
+
+                if (finished)
+                    break;
+
+                if (!ctx.needWaitDraw)
+                    processCoverageTick(rb, ctx);
+
+                handleCoverageCompletion(ctx, rb, finished);
             }
 
             accumulatedMs -= SIM_TICK_MS;
