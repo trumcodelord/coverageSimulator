@@ -1,5 +1,6 @@
 #include "planner.h"
 #include <queue>
+#include <algorithm>
 
 using namespace std;
 
@@ -44,14 +45,27 @@ void dijkstra(Cell start, int d[1001][1001], Cell trace[1001][1001])
 
 vector<Cell> tracePath(Cell start, Cell goal, Cell trace[1001][1001])
 {
-    if (goal == Cell{0, 0}) return {};
-    if (start == goal) return {start};
+    if (goal == Cell{0, 0})
+        return {};
 
-    Cell prev = trace[goal.r][goal.c];
-    if (prev == Cell{0, 0}) return {};
+    if (start == goal)
+        return {start};
 
-    vector<Cell> path = tracePath(start, prev, trace);
-    path.push_back(goal);
+    vector<Cell> path;
+    Cell cur = goal;
+
+    while (!(cur == Cell{0, 0}) && !(cur == start))
+    {
+        path.push_back(cur);
+        cur = trace[cur.r][cur.c];
+    }
+
+    if (!(cur == start))
+        return {};
+
+    path.push_back(start);
+    reverse(path.begin(), path.end());
+
     return path;
 }
 

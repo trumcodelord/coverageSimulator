@@ -14,8 +14,13 @@ CoverageStats collectStats(const Robot& rb)
     else
         s.totalEdges = 0;
     for (auto &it : rb.edgeCount)
+    {
         if (it.second > 1)
+        {
             s.overlapEdges++;
+            s.repeatedEdgeTraversals += it.second - 1;
+        }
+    }
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
             if (covered[i][j])
@@ -25,7 +30,10 @@ CoverageStats collectStats(const Robot& rb)
             if (dynamicBlocked[i][j])
                 s.dynamicBlockedCells++;
     s.initialFreeCells = initialFreeCells;
-    s.coverageRate = (double)s.coveredCells / s.initialFreeCells * 100.0;
+    if (s.initialFreeCells > 0)
+        s.coverageRate = (double)s.coveredCells / s.initialFreeCells * 100.0;
+    if (s.totalSteps > 0)
+        s.coverageEfficiency = (double)s.coveredCells / s.totalSteps;
     return s;
 }
 void printStats(const CoverageStats& s)
@@ -34,6 +42,8 @@ void printStats(const CoverageStats& s)
     cout << "Total steps: " << s.totalSteps << '\n';
     cout << "Total edges: " << s.totalEdges << '\n';
     cout << "Overlap edges: " << s.overlapEdges << '\n';
+    cout << "Repeated edge traversals: " << s.repeatedEdgeTraversals << '\n';
+    cout << "Coverage efficiency: " << s.coverageEfficiency << '\n';
     cout << "Initial free cells: " << s.initialFreeCells << '\n';
     cout << "Covered cells: " << s.coveredCells << '\n';
     cout << "Dynamic blocked cells: " << s.dynamicBlockedCells << '\n';
@@ -48,6 +58,8 @@ void logStats(const CoverageStats& s, const string& filename)
     fout << "Total steps: " << s.totalSteps << '\n';
     fout << "Total edges: " << s.totalEdges << '\n';
     fout << "Overlap edges: " << s.overlapEdges << '\n';
+    fout << "Repeated edge traversals: " << s.repeatedEdgeTraversals << '\n';
+    fout << "Coverage efficiency: " << s.coverageEfficiency << '\n';
     fout << "Initial free cells: " << s.initialFreeCells << '\n';
     fout << "Covered cells: " << s.coveredCells << '\n';
     fout << "Dynamic blocked cells: " << s.dynamicBlockedCells << '\n';
