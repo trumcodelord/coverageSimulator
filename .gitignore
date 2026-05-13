@@ -23,6 +23,7 @@ cmake-build-*/
 *.layout
 *.cbTemp
 *.cbp.save
+*.cbp
 
 # CMake / Make
 CMakeFiles/
