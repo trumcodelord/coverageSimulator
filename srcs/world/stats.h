@@ -7,6 +7,8 @@ struct CoverageStats
     int totalSteps = 0;
     int totalEdges = 0;
     int overlapEdges = 0;
+    int repeatedEdgeTraversals = 0;
+    double coverageEfficiency = 0.0;
 
     int initialFreeCells = 0;
     int coveredCells = 0;
