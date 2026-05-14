@@ -17,6 +17,7 @@ cmake-build-*/
 *.exe
 *.out
 *.app
+*.txt
 
 # CodeBlocks
 *.depend
