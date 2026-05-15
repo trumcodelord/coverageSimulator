@@ -58,33 +58,7 @@ static const int MAX_YIELD_CANDIDATE_COST = 3;
 
 static const int COMMAND_WAIT_TICKS = 8;
 
-enum MissionDirective
-{
-    PRESERVE,
-    HEROIC
-};
-
 static const MissionDirective CRITICAL_DIRECTIVE = PRESERVE;
-
-enum RobotMode
-{
-    NORMAL,
-    ALERT,
-    HOLD_SAFE,
-    RETURN_TO_BASE,
-    RECHARGING,
-    POWER_SAVE,
-    WAIT_FOR_COMMAND,
-    FINAL_PUSH
-};
-
-enum MissionOutcome
-{
-    MISSION_RUNNING,
-    MISSION_SUCCESS,
-    MISSION_PARTIAL_SUCCESS,
-    MISSION_FAILED
-};
 
 struct CoverageContext
 {
@@ -150,28 +124,6 @@ static void printRetryMessage(const char *msg, int retryCount)
         cout << msg << " Retry " << retryCount
              << "/" << MAX_RETRY_COUNT << '\n';
     }
-}
-
-static const char* modeName(RobotMode mode)
-{
-    if (mode == NORMAL) return "NORMAL";
-    if (mode == ALERT) return "ALERT";
-    if (mode == HOLD_SAFE) return "HOLD_SAFE";
-    if (mode == RETURN_TO_BASE) return "RETURN_TO_BASE";
-    if (mode == RECHARGING) return "RECHARGING";
-    if (mode == POWER_SAVE) return "POWER_SAVE";
-    if (mode == WAIT_FOR_COMMAND) return "WAIT_FOR_COMMAND";
-    if (mode == FINAL_PUSH) return "FINAL_PUSH";
-    return "UNKNOWN";
-}
-
-static const char* outcomeName(MissionOutcome outcome)
-{
-    if (outcome == MISSION_RUNNING) return "RUNNING";
-    if (outcome == MISSION_SUCCESS) return "SUCCESS";
-    if (outcome == MISSION_PARTIAL_SUCCESS) return "PARTIAL_SUCCESS";
-    if (outcome == MISSION_FAILED) return "FAILED";
-    return "UNKNOWN";
 }
 
 static void clearPath(Robot &rb)
@@ -520,7 +472,7 @@ static void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     if (ctx.holdCycleCount > MAX_HOLD_CYCLES)
     {
         cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
-        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
         ctx.shouldStop = true;
         setHUDState("STOP");
     }
@@ -542,7 +494,7 @@ static void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     if (ctx.retryCount > MAX_RETRY_COUNT)
     {
         cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
-        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
         ctx.shouldStop = true;
         setHUDState("STOP");
         return;
@@ -589,7 +541,7 @@ static void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
     if (ctx.retryCount > MAX_RETRY_COUNT)
     {
         cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
-        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
         ctx.shouldStop = true;
         setHUDState("STOP");
         return;
@@ -637,7 +589,7 @@ static void moveRobotOneStep(Robot &rb, CoverageContext &ctx)
     if (rb.energy <= 0)
     {
         clearPath(rb);
-        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
         ctx.shouldStop = true;
         setHUDState("POWER_LOSS");
         return;
@@ -714,7 +666,7 @@ static void processCoverageTick(Robot &rb, CoverageContext &ctx)
     if (ctx.mode == POWER_SAVE)
     {
         setHUDState("POWER_SAVE");
-        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+        ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
         ctx.shouldStop = true;
         return;
     }
@@ -821,7 +773,7 @@ static void enterPowerSave(CoverageContext &ctx, Robot &rb, const char *message)
     clearPath(rb);
     switchMode(ctx, POWER_SAVE);
 
-    ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_SUCCESS : MISSION_FAILED;
+    ctx.outcome = ctx.coverageComplete ? MISSION_PARTIAL_PRESERVED : MISSION_FAILED;
     ctx.shouldStop = true;
     ctx.needWaitDraw = false;
 }
@@ -1100,7 +1052,7 @@ static void renderFrame(const Robot &rb)
 static void printMissionSummary(const CoverageContext &ctx, const Robot &rb)
 {
     cout << "\n===== MISSION SUMMARY =====\n";
-    cout << "Outcome: " << outcomeName(ctx.outcome) << '\n';
+    cout << "Outcome: " << missionOutcomeName(ctx.outcome) << '\n';
     cout << "Final mode: " << modeName(ctx.mode) << '\n';
     cout << "Coverage complete: " << (ctx.coverageComplete ? "YES" : "NO") << '\n';
     cout << "Returned to base: " << (isAtBase(rb) ? "YES" : "NO") << '\n';
@@ -1179,7 +1131,7 @@ void executeCoverage(Robot &rb)
         if (ctx.coverageComplete && isAtBase(rb))
             ctx.outcome = MISSION_SUCCESS;
         else if (ctx.coverageComplete)
-            ctx.outcome = MISSION_PARTIAL_SUCCESS;
+            ctx.outcome = MISSION_PARTIAL_PRESERVED;
         else
             ctx.outcome = MISSION_FAILED;
     }
