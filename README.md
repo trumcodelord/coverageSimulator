@@ -1,83 +1,93 @@
 # Coverage Simulator
 
-Mô phỏng bài toán **coverage path planning** cho một robot trên grid map, có vật cản động và ràng buộc năng lượng.
+Mô phỏng **coverage path planning** cho robot trên bản đồ dạng lưới, có vật cản tĩnh, vật cản động, ràng buộc năng lượng và logic nhiệm vụ theo hướng **mission-aware autonomy**.
 
 Đây là đồ án tốt nghiệp cử nhân tại Đại học Bách Khoa Hà Nội.
 
-## 1. Bài toán
+---
 
-Bài toán chính là lập kế hoạch cho một robot đi phủ bản đồ dạng lưới.
+## 1. Mục tiêu của project
 
-Robot được giả định có:
+Project này không chỉ mô phỏng robot đi qua mọi ô trống trên bản đồ.
 
-- full map;
-- góc nhìn bird-view;
-- một robot duy nhất;
-- vật cản tĩnh biết trước;
-- vật cản động trong môi trường;
-- năng lượng hữu hạn.
-
-Mục tiêu của đồ án không phải là chứng minh thuật toán tối ưu tuyệt đối, mà là xây dựng một hệ thống mô phỏng có logic rõ ràng, chạy được, giải thích được và có khả năng xử lý các tình huống thực tế như vật cản động, pin thấp, đường về bị chặn, hoặc nhiệm vụ không thể hoàn thành an toàn.
-
-## 2. Ý tưởng chính
-
-Với bài toán coverage đơn giản, robot chỉ cần hỏi:
+Mục tiêu chính là xây dựng một hệ thống mô phỏng robot trinh sát tự trị trong môi trường nguy hiểm, nơi robot phải cân bằng giữa:
 
 ```text
-Ô chưa phủ gần nhất nằm ở đâu?
+coverage value
+survivability
+recoverability
+energy constraint
+safe return
+mission outcome
 ```
 
-Nhưng khi thêm năng lượng hữu hạn và vật cản động, robot phải ra quyết định phức tạp hơn:
+Robot không được thiết kế để “không bao giờ thất bại”. Robot được thiết kế để nếu thất bại thì thất bại có kiểm soát, giữ lại nhiều giá trị nhiệm vụ nhất có thể.
 
 ```text
-Có nên tiếp tục coverage không?
-Có nên quay về base không?
-Có nên chờ không?
-Có nên replan không?
-Có nên đi vòng không?
-Có nên dừng để bảo toàn không?
-Có nên dùng phần pin cuối để tạo thêm mission value không?
+Làm nhiệm vụ.
+Tôn trọng ràng buộc.
+Bảo toàn tương lai.
 ```
 
-Triết lý thiết kế của hệ thống:
+---
+
+## 2. Bối cảnh mô phỏng
+
+Narrative hiện tại của project:
 
 ```text
-Constraint tạo ra tradeoff.
-Tradeoff tạo ra quyết định.
-Quyết định tạo ra trí tuệ.
+Robot = autonomous reconnaissance robot
+Map = khu vực cần khảo sát / trinh sát
+Base = command station / recharge station
+Dynamic obstacles = allied patrols, vehicles, unknown hazards
+Coverage = thu thập dữ liệu khu vực
+Return-to-base = xác nhận nhiệm vụ hoàn tất và phục hồi robot
 ```
 
-Robot không được thiết kế để “không bao giờ thất bại”. Robot được thiết kế để nếu thất bại thì thất bại an toàn, có ích, và giữ lại nhiều giá trị nhất có thể.
+Trong hệ thống này:
+
+```text
+coverage complete != mission complete
+```
+
+Một nhiệm vụ chỉ được xem là thành công hoàn toàn khi robot đã phủ xong bản đồ **và quay về base an toàn**.
+
+---
 
 ## 3. Các chức năng chính
 
 - Coverage trên grid map.
 - Một robot duy nhất.
 - Vật cản tĩnh.
-- Vật cản động:
-  - guard;
-  - vehicle;
-  - random walker.
-- Planner dùng Dijkstra với unit cost.
+- Vật cản động: guard/patrol, vehicle/convoy, unknown or random hazard.
+- Planner dùng Dijkstra với unit-cost.
 - Chọn ô chưa phủ gần nhất làm target.
 - Quản lý năng lượng theo từng bước di chuyển.
-- Tự quay về base khi pin thấp.
-- Sạc lại tại base.
+- Ước lượng chi phí quay về base bằng Dijkstra.
+- Tự quay về base khi năng lượng thấp.
+- Sạc lại khi về base.
 - Né vật cản động.
 - Replan khi đường bị chặn.
-- Chờ an toàn khi môi trường tạm thời nguy hiểm.
-- Xử lý deadlock khi đường về bị chặn.
-- Chính sách preserve / heroic trong tình huống critical.
-- Hiển thị bằng OpenCV.
-- HUD hiển thị trạng thái, năng lượng, số lần return/recharge.
-- Trail thể hiện đường robot đã đi và mức độ overlap.
-- Bộ map demo/test trong thư mục `tests/`.
+- HOLD_SAFE khi môi trường không an toàn kéo dài.
+- Tactical yield khi đường về bị nghẽn.
+- POWER_SAVE khi không thể hoàn thành nhiệm vụ tuyệt đối nhưng vẫn cần preserve.
+- WAIT_FOR_COMMAND / FINAL_PUSH để mô phỏng directive trong tình huống critical.
+- Hiển thị bằng OpenCV với HUD.
+- Ghi log thống kê coverage.
+
+---
 
 ## 4. State machine của robot
 
-Controller chính nằm trong `srcs/robot/coverage.cpp`.
+Controller chính nằm trong:
 
-Các trạng thái chính:
+```text
+srcs/robot/coverage.cpp
+```
+
+Sau refactor, file này chỉ còn vai trò orchestration: khởi tạo robot, chạy tick loop, render frame và gọi các module xử lý mission logic.
+
+Các state chính:
 
 ```text
 NORMAL
@@ -90,27 +100,53 @@ WAIT_FOR_COMMAND
 FINAL_PUSH
 ```
 
-Ý nghĩa:
-
 | State | Ý nghĩa |
 |---|---|
 | `NORMAL` | Robot coverage bình thường |
 | `ALERT` | Có vật cản động gần robot hoặc active path bị chặn |
-| `HOLD_SAFE` | Môi trường tạm thời không an toàn, robot dừng và thử recover |
-| `RETURN_TO_BASE` | Pin thấp, robot quay về base |
+| `HOLD_SAFE` | Robot dừng an toàn và thử recover/replan định kỳ |
+| `RETURN_TO_BASE` | Robot quay về base vì pin thấp hoặc coverage đã hoàn tất |
 | `RECHARGING` | Robot đang sạc tại base |
-| `POWER_SAVE` | Preserve mode, robot dừng an toàn |
-| `WAIT_FOR_COMMAND` | Tình huống critical, cần directive cấp nhiệm vụ |
-| `FINAL_PUSH` | Heroic mode, robot tiếp tục coverage đến khi hết pin nhưng vẫn né vật cản |
+| `POWER_SAVE` | Robot dừng để bảo toàn năng lượng/dữ liệu khi không thể return an toàn |
+| `WAIT_FOR_COMMAND` | Tình huống critical, cần directive |
+| `FINAL_PUSH` | Heroic mode: tiếp tục coverage khi preserve không được chọn |
 
-## 5. Chính sách năng lượng
+---
 
-Mỗi bước di chuyển tiêu tốn năng lượng.
+## 5. Mission outcome
 
-Robot không dùng ngưỡng phần trăm pin cố định. Thay vào đó, robot ước lượng chi phí quay về base bằng Dijkstra:
+Project phân biệt coverage result và mission result.
+
+```text
+MISSION_SUCCESS
+MISSION_PARTIAL_RETURNED
+MISSION_PARTIAL_PRESERVED
+MISSION_FAILED
+```
+
+| Outcome | Ý nghĩa |
+|---|---|
+| `MISSION_SUCCESS` | Coverage complete và robot đã quay về base |
+| `MISSION_PARTIAL_RETURNED` | Robot quay về được nhưng coverage chưa hoàn tất |
+| `MISSION_PARTIAL_PRESERVED` | Robot không đạt success tuyệt đối nhưng preserve được mission value / trạng thái an toàn |
+| `MISSION_FAILED` | Robot mất khả năng hoàn thành hoặc preserve giá trị nhiệm vụ |
+
+Hiện hệ thống ưu tiên triết lý:
+
+```text
+preserve > heroic
+```
+
+Heroic behavior chỉ nên dùng khi coverage chưa hoàn tất và hệ thống được cấp directive tương ứng.
+
+---
+
+## 6. Chính sách năng lượng
+
+Robot không dùng một ngưỡng phần trăm pin cố định. Thay vào đó, robot ước lượng chi phí quay về base tại vị trí hiện tại:
 
 ```cpp
-costToBase = dijkstra distance from robot to base
+costToBase = Dijkstra(robot.position, base)
 returnMargin = max(MIN_RETURN_MARGIN, costToBase / RETURN_MARGIN_DIVISOR)
 ```
 
@@ -120,96 +156,147 @@ Robot bắt đầu quay về base khi:
 energy <= costToBase + returnMargin
 ```
 
-Robot rơi vào trạng thái critical khi:
+Robot rơi vào vùng critical khi:
 
 ```cpp
 energy <= costToBase || energy <= MIN_EMERGENCY_ENERGY
 ```
 
-Cách này giúp policy phụ thuộc vào vị trí hiện tại. Robot ở xa base sẽ thận trọng hơn robot đang gần base.
+Cách này làm policy phụ thuộc vào vị trí thật của robot: càng xa base thì robot càng thận trọng.
 
-## 6. Chính sách thất bại an toàn
+---
 
-Nếu robot đang quay về base nhưng đường về bị vật cản động chặn, robot không lao vào vật cản.
+## 7. Return-to-base và graceful failure
 
-Thay vào đó, robot xử lý theo chuỗi:
+Khi cần quay về base, robot không được lao vào vật cản động.
+
+Nếu đường về bị chặn, robot xử lý theo chuỗi:
 
 ```text
 RETURN_TO_BASE
 → RETURN_WAIT
-→ thử detour
-→ nếu không có detour và năng lượng critical
-→ WAIT_FOR_COMMAND
-→ POWER_SAVE hoặc FINAL_PUSH
+→ tactical yield
+→ detour
+→ WAIT_FOR_COMMAND / POWER_SAVE
 ```
 
-Directive mặc định hiện tại là:
+Tactical yield cho phép robot tạm lùi hoặc dịch sang một ô covered an toàn để giải phóng choke point.
 
-```cpp
-PRESERVE
-```
+Nếu coverage đã hoàn tất nhưng đường về không còn an toàn và năng lượng critical, robot chuyển sang `POWER_SAVE` thay vì chết vô ích.
 
-Trong preserve mode, robot dừng an toàn để giữ:
+---
 
-- robot;
-- năng lượng còn lại;
-- dữ liệu coverage đã thu được;
-- khả năng recover trong tương lai.
+## 8. Dynamic obstacles
 
-Có thể đổi directive sang:
+Các vật cản động đại diện cho các thực thể trong môi trường nguy hiểm:
 
-```cpp
-HEROIC
-```
+| Ký hiệu | Ý nghĩa |
+|---|---|
+| `G` | Guard / patrol |
+| `V` | Vehicle / convoy |
+| `W` | Unknown/random hazard |
 
-Trong heroic mode, robot bỏ mục tiêu quay về base và dùng phần năng lượng còn lại để tạo thêm mission value. Tuy nhiên, robot vẫn phải né vật cản động.
+Ghi chú: `W` ban đầu được mô hình hóa như random walker. Trong narrative mới, nó nên được hiểu rộng hơn là **unknown hazard**: một vật thể hoặc tác nhân có hành vi không đủ tin cậy để robot tối ưu hóa quanh nó. Robot phản ứng bằng cách tăng thận trọng, tránh xa, chờ hoặc replan.
 
-## 7. Chính sách vật cản động
-
-Vật cản động không được chủ động đâm xuyên qua robot.
-
-Coverage controller cập nhật vị trí robot cho môi trường bằng:
+Dynamic obstacle không được chủ động đâm xuyên qua robot. Robot cập nhật ô cần tránh cho môi trường bằng:
 
 ```cpp
 setRobotAvoidanceCell(rb.pos);
 ```
 
-Trước khi di chuyển, dynamic obstacle kiểm tra nếu bước tiếp theo có thể đâm hoặc tiến quá gần robot thì obstacle sẽ dừng/yield.
+---
 
-Chính sách này áp dụng cho:
+## 9. Visualization
 
-```text
-GUARD
-VEHICLE
-RANDOM
-```
-
-## 8. Giao diện mô phỏng
-
-Giao diện OpenCV hiển thị:
+Project dùng OpenCV để hiển thị:
 
 - grid map;
 - vật cản tĩnh;
 - vật cản động;
 - ô đã coverage;
-- vị trí robot;
-- hướng robot;
+- vị trí và hướng robot;
 - active path;
 - trail robot đã đi;
-- mức độ overlap trên cạnh;
-- trạng thái hiện tại;
+- overlap trên cạnh;
+- HUD trạng thái;
 - năng lượng còn lại;
-- tổng năng lượng đã dùng;
-- số lần return;
-- số lần recharge;
-- active path có tồn tại hay không;
-- độ dài path hiện tại.
+- số lần return/recharge.
 
-HUD được đặt ngoài vùng grid nếu còn chỗ. Nếu không đủ chỗ, HUD sẽ không được vẽ để tránh che bản đồ.
+Sau refactor, phần visualization được tách vào:
 
-## 9. Format input
+```text
+srcs/visualization/
+```
 
-Chương trình đọc map từ thư mục `tests/`.
+| Module | Trách nhiệm |
+|---|---|
+| `visual_layout` | screen size, cell size, offsets, coordinate transform |
+| `visual_assets` | load icon guard/vehicle/random |
+| `map_renderer` | vẽ map cells và grid lines |
+| `entity_renderer` | vẽ robot, path, trail, dynamic obstacles |
+| `hud_renderer` | HUD state và HUD drawing |
+| `opencv.cpp` | façade cho `initWindow`, `drawFrame`, `waitFrame` |
+
+---
+
+## 10. Cấu trúc code hiện tại
+
+```text
+srcs/
+  main.cpp
+
+  environment/
+    dynamic_obstacle.cpp
+    guard.cpp
+    vehicle.cpp
+    random_walk.cpp
+
+  robot/
+    coverage.cpp
+    coverage_context.cpp
+    coverage_tick.cpp
+    coverage_timing.cpp
+    coverage_render.cpp
+
+    mission_policy.cpp
+    mission_state.cpp
+    mission_summary.cpp
+
+    energy_model.cpp
+    path_builder.cpp
+    path_safety.cpp
+    return_to_base.cpp
+    robot_lifecycle.cpp
+    robot_motion.cpp
+    tactical_yield.cpp
+
+  visualization/
+    opencv.cpp
+    visual_layout.cpp
+    visual_assets.cpp
+    map_renderer.cpp
+    entity_renderer.cpp
+    hud_renderer.cpp
+
+  world/
+    grid.cpp
+    input.cpp
+    stats.cpp
+    image_utils.cpp
+    types.h
+```
+
+`coverage.cpp` hiện đóng vai trò entry point của mission controller, không còn chứa toàn bộ state machine chi tiết.
+
+---
+
+## 11. Format input
+
+Chương trình đọc map từ thư mục:
+
+```text
+tests/
+```
 
 Khi chương trình hỏi:
 
@@ -238,23 +325,15 @@ Các ký hiệu trong map:
 | `R` | Vị trí bắt đầu của robot |
 | `0` | Ô trống |
 | `1` | Vật cản tĩnh |
-| `G` | Guard dynamic obstacle |
-| `V` | Vehicle dynamic obstacle |
-| `W` | Random dynamic obstacle |
+| `G` | Guard / patrol |
+| `V` | Vehicle / convoy |
+| `W` | Unknown/random hazard |
 
-Ví dụ:
+---
 
-```text
-111111111111
-1R0000000001
-100000G00001
-100000000001
-111111111111
-```
+## 12. Demo scenarios
 
-## 10. Các demo scenario đề xuất
-
-Một số map demo/test:
+Một số scenario đề xuất:
 
 ```text
 demo_01_open_room
@@ -269,8 +348,6 @@ demo_09_low_energy_large_room
 demo_10_blocked_return_preserve
 ```
 
-Ý nghĩa:
-
 | Scenario | Mục tiêu |
 |---|---|
 | `demo_01_open_room` | Coverage bình thường trong phòng mở |
@@ -278,15 +355,25 @@ demo_10_blocked_return_preserve
 | `demo_03_rooms_with_door` | Coverage qua các phòng nối nhau |
 | `demo_04_static_maze` | Điều hướng với vật cản tĩnh |
 | `demo_05_guard_alert` | Robot cảnh giác/replan quanh guard |
-| `demo_06_vehicle_corridor` | Tương tác với vehicle trong hành lang hẹp |
+| `demo_06_vehicle_corridor` | Tương tác với vehicle trong hành lang |
 | `demo_07_vehicle_detour` | Đường bị chặn và có đường vòng |
-| `demo_08_random_obstacle_room` | Né random obstacle |
+| `demo_08_random_obstacle_room` | Unknown/random hazard |
 | `demo_09_low_energy_large_room` | Test pin thấp, return và recharge |
 | `demo_10_blocked_return_preserve` | Đường về bị chặn, critical và preserve |
 
-## 11. Build
+Regression tối thiểu nên chạy sau mỗi refactor lớn:
 
-Project viết bằng C++ và dùng OpenCV để hiển thị.
+```text
+demo_01_open_room
+demo_09_low_energy_large_room
+demo_10_blocked_return_preserve
+```
+
+---
+
+## 13. Build
+
+Project viết bằng C++17 và dùng OpenCV.
 
 Ví dụ build bằng `g++` trên môi trường có `pkg-config` và OpenCV 4:
 
@@ -296,20 +383,54 @@ g++ -std=c++17 \
   srcs/environment/*.cpp \
   srcs/robot/*.cpp \
   srcs/world/*.cpp \
+  srcs/visualization/*.cpp \
   -I srcs/environment \
   -I srcs/robot \
   -I srcs/world \
+  -I srcs/visualization \
   `pkg-config --cflags --libs opencv4` \
   -o coverage_sim
 ```
 
-Trên Windows, cần cấu hình compiler/IDE với:
+Trên Windows/Code::Blocks, cần cấu hình:
 
-- OpenCV include path;
-- OpenCV library path;
-- OpenCV runtime DLL trong `PATH` hoặc cạnh file `.exe`.
+Compiler search directories:
 
-## 12. Run
+```text
+srcs/environment
+srcs/robot
+srcs/world
+srcs/visualization
+<OpenCV include directory>
+```
+
+Linker settings:
+
+```text
+<OpenCV library directory>
+opencv_worldxxx hoặc các OpenCV libs tương ứng
+```
+
+Nếu gặp lỗi:
+
+```text
+opencv2/core.hpp: No such file or directory
+opencv2/opencv.hpp: No such file or directory
+```
+
+thì compiler chưa biết OpenCV include path.
+
+Nếu gặp lỗi:
+
+```text
+undefined reference to cv::...
+```
+
+thì linker chưa link đúng OpenCV library.
+
+---
+
+## 14. Run
 
 Sau khi build:
 
@@ -323,56 +444,84 @@ Sau đó nhập tên test, ví dụ:
 demo_01_open_room
 ```
 
-## 13. Các file quan trọng
+---
+
+## 15. Design philosophy
+
+Project này xem coverage không chỉ là bài toán đi qua mọi ô.
+
+Trong môi trường có năng lượng hữu hạn và vật cản động, robot phải ra quyết định:
 
 ```text
-srcs/main.cpp
-srcs/robot/coverage.cpp
-srcs/robot/planner.cpp
-srcs/environment/dynamic_obstacle.cpp
-srcs/environment/guard.cpp
-srcs/environment/vehicle.cpp
-srcs/environment/random_walk.cpp
-srcs/world/opencv.cpp
-srcs/world/input.cpp
-srcs/world/stats.cpp
-srcs/world/types.h
+Có nên tiếp tục coverage không?
+Có nên quay về base không?
+Có nên chờ không?
+Có nên đi vòng không?
+Có nên preserve không?
+Có nên final push không?
 ```
 
-## 14. Giới hạn hiện tại
+Triết lý thiết kế:
 
-- Chỉ có một robot.
-- Full map được biết trước.
-- Chuyển động trên grid.
-- Planner dùng Dijkstra unit-cost.
-- Dynamic obstacle dùng behavior đơn giản.
-- Energy cost hiện chủ yếu gắn với movement.
-- Waiting/replanning hiện được mô hình hóa như time/opportunity cost, chưa trừ pin trực tiếp.
-- Chưa có đảm bảo tối ưu toàn cục.
-- Chưa có multi-robot coordination.
+```text
+Constraint tạo ra tradeoff.
+Tradeoff tạo ra quyết định.
+Quyết định tạo ra trí tuệ.
+```
 
-## 15. Hướng phát triển tiếp theo
+Các keyword liên quan:
 
-- Mission summary và stop reason rõ ràng hơn.
-- Test runner tự động.
-- Headless mode để chạy regression test không cần UI.
-- Deterministic obstacle mode để test ổn định hơn.
-- Bắt buộc robot quay về base sau khi coverage hoàn tất.
-- Tách overlap trong phase coverage khỏi chi phí final return.
-- Tactical yield: robot lùi/né vài ô để phá deadlock với vehicle trong hành lang hẹp.
-- Cân nhắc energy cost cho waiting, replanning hoặc speed boost.
-- Dọn code và split file lớn.
-
-## 16. Triết lý thiết kế
-
-Đồ án này xem coverage không chỉ là bài toán đi qua mọi ô.
-
-Khi năng lượng hữu hạn, mỗi bước đi đều có giá. Mỗi lần đi vòng có giá. Mỗi lần chờ có chi phí cơ hội. Một robot tốt không nên mù quáng đi tiếp cho đến khi hết pin.
+```text
+bounded rationality
+graceful degradation
+survivability engineering
+mission-aware autonomy
+fail-safe systems
+recoverability
+```
 
 Một hệ tự trị trưởng thành không phải là hệ không bao giờ thất bại. Đó là hệ biết thất bại an toàn, giữ lại giá trị, và bảo toàn khả năng phục hồi khi thành công tuyệt đối không còn được đảm bảo.
 
-```text
-Làm nhiệm vụ.
-Tôn trọng ràng buộc.
-Bảo toàn tương lai.
-```
+---
+
+## 16. Giới hạn hiện tại
+
+- Một robot duy nhất.
+- Full map được biết trước.
+- Chuyển động trên grid.
+- Planner dùng Dijkstra unit-cost.
+- Dynamic obstacle behavior còn đơn giản.
+- Energy model hiện chủ yếu gắn với movement.
+- Waiting/replanning chưa trừ pin trực tiếp.
+- Chưa có physics thật.
+- Chưa có multi-robot coordination.
+- Chưa có test runner tự động.
+- Chưa có headless mode chính thức.
+
+---
+
+## 17. Hướng phát triển tiếp theo
+
+- Headless mode để chạy regression test không cần UI.
+- Test runner tự động cho nhiều map.
+- Mission summary rõ hơn.
+- Baseline comparison:
+  - Greedy CPP;
+  - Energy-aware return;
+  - Proposed mission-aware system.
+- Energy model nâng cao:
+  - turn cost;
+  - acceleration cost;
+  - speed penalty;
+  - waiting/replanning cost.
+- Unknown hazard semantics thay cho random walker.
+- Rescue/recon maps:
+  - choke points;
+  - corridors;
+  - rooms;
+  - convoy intersections.
+- Formal hóa policy:
+  - objective;
+  - trigger;
+  - tradeoff;
+  - action.

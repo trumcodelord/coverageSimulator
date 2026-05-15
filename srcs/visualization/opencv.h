@@ -1,6 +1,6 @@
 #pragma once
 
-#include "coverage.h"
+#include "types.h"
 #include <string>
 
 void initWindow();

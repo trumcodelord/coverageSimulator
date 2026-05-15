@@ -39,13 +39,16 @@ RobotMoveResult moveRobotAlongCurrentPath(
     rb.steps++;
     consumeEnergy(rb, energyCost);
 
-    markCovered(rb.pos.r, rb.pos.c);
-
     result.moved = true;
     result.powerLoss = (rb.energy <= 0);
 
     if (result.powerLoss)
+    {
         ctx.shouldStop = true;
+        return result;
+    }
+
+    markCovered(rb.pos.r, rb.pos.c);
 
     return result;
 }
