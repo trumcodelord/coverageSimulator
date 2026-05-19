@@ -59,7 +59,7 @@ Một nhiệm vụ chỉ được xem là thành công hoàn toàn khi robot đ�
 - Coverage trên grid map.
 - Một robot duy nhất.
 - Vật cản tĩnh.
-- Vật cản động: guard/patrol, vehicle/convoy, unknown or random hazard.
+- Vật cản động: guard/patrol, vehicle/convoy, unknown hazard.
 - Planner dùng Dijkstra với unit-cost.
 - Chọn ô chưa phủ gần nhất làm target.
 - Quản lý năng lượng theo từng bước di chuyển.
@@ -194,9 +194,9 @@ Các vật cản động đại diện cho các thực thể trong môi trườn
 |---|---|
 | `G` | Guard / patrol |
 | `V` | Vehicle / convoy |
-| `W` | Unknown/random hazard |
+| `W` | Unknown hazard |
 
-Ghi chú: `W` ban đầu được mô hình hóa như random walker. Trong narrative mới, nó nên được hiểu rộng hơn là **unknown hazard**: một vật thể hoặc tác nhân có hành vi không đủ tin cậy để robot tối ưu hóa quanh nó. Robot phản ứng bằng cách tăng thận trọng, tránh xa, chờ hoặc replan.
+`W` được hiểu là **unknown hazard**: một vật thể hoặc tác nhân có hành vi không đủ tin cậy để robot tối ưu hóa quanh nó. Robot phản ứng bằng cách tăng thận trọng, tránh xa, chờ hoặc replan.
 
 Dynamic obstacle không được chủ động đâm xuyên qua robot. Robot cập nhật ô cần tránh cho môi trường bằng:
 
@@ -231,7 +231,7 @@ srcs/visualization/
 | Module | Trách nhiệm |
 |---|---|
 | `visual_layout` | screen size, cell size, offsets, coordinate transform |
-| `visual_assets` | load icon guard/vehicle/random |
+| `visual_assets` | load icon guard/vehicle/unknown hazard |
 | `map_renderer` | vẽ map cells và grid lines |
 | `entity_renderer` | vẽ robot, path, trail, dynamic obstacles |
 | `hud_renderer` | HUD state và HUD drawing |
@@ -249,7 +249,6 @@ srcs/
     dynamic_obstacle.cpp
     guard.cpp
     vehicle.cpp
-    random_walk.cpp
 
   robot/
     coverage.cpp
@@ -327,7 +326,7 @@ Các ký hiệu trong map:
 | `1` | Vật cản tĩnh |
 | `G` | Guard / patrol |
 | `V` | Vehicle / convoy |
-| `W` | Unknown/random hazard |
+| `W` | Unknown hazard |
 
 ---
 
@@ -357,7 +356,7 @@ demo_10_blocked_return_preserve
 | `demo_05_guard_alert` | Robot cảnh giác/replan quanh guard |
 | `demo_06_vehicle_corridor` | Tương tác với vehicle trong hành lang |
 | `demo_07_vehicle_detour` | Đường bị chặn và có đường vòng |
-| `demo_08_random_obstacle_room` | Unknown/random hazard |
+| `demo_08_random_obstacle_room` | Unknown hazard trong phòng mở |
 | `demo_09_low_energy_large_room` | Test pin thấp, return và recharge |
 | `demo_10_blocked_return_preserve` | Đường về bị chặn, critical và preserve |
 
@@ -514,7 +513,6 @@ Một hệ tự trị trưởng thành không phải là hệ không bao giờ t
   - acceleration cost;
   - speed penalty;
   - waiting/replanning cost.
-- Unknown hazard semantics thay cho random walker.
 - Rescue/recon maps:
   - choke points;
   - corridors;
