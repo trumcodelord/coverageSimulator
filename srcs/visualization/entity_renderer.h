@@ -4,6 +4,8 @@
 
 #include <opencv2/core.hpp>
 
+void paintBase(cv::Mat &canvas, const Robot &rb);
+
 void paintRobot(cv::Mat &canvas, const Robot &rb);
 
 void paintPath(cv::Mat &canvas, const Robot &rb);

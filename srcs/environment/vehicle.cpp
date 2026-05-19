@@ -12,7 +12,7 @@ static const int VEHICLE_WAIT_MAX = 6;
 
 static bool canStandCell(int r, int c)
 {
-    return inBounds(r, c) && !blocked[r][c];
+    return !isForbiddenDynamicObstacleCell(r, c);
 }
 
 static Cell nextCell(Cell p, int dir)
@@ -74,7 +74,6 @@ static int chooseNewDir(Cell p, int curDir)
 
 void updateVehicleBehavior(DynamicObstacle &obs)
 {
-
     if (obs.stateTick == 0 && obs.waitTick == 0 && obs.vx == 0.0f && obs.vy == 0.0f)
     {
         vector<int> candidates;
@@ -114,7 +113,6 @@ void updateVehicleBehavior(DynamicObstacle &obs)
         return;
     }
 
-
     if (canMoveDir(obs.pos, obs.dir))
     {
         setMoveVelocity(obs, obs.dir);
@@ -133,7 +131,6 @@ void updateVehicleBehavior(DynamicObstacle &obs)
         obs.vy = 0.0f;
         return;
     }
-
 
     obs.state = VEHICLE_WAIT;
     obs.stateTick = 0;

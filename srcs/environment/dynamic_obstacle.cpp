@@ -27,9 +27,28 @@ static bool robotAvoidanceEnabled = false;
 
 static const int ROBOT_YIELD_RADIUS = 1;
 
+static int occupiedCount[1001][1001];
+static bool reservedNext[1001][1001];
+
 static int roundToCell(float v)
 {
     return (int)std::lround(v);
+}
+
+bool isForbiddenDynamicObstacleCell(int r, int c)
+{
+    if (!inBounds(r, c))
+        return true;
+
+    if (blocked[r][c])
+        return true;
+
+    // The robot base / command station is a protected operational zone.
+    // Dynamic obstacles must not occupy it.
+    if (r == start.r && c == start.c)
+        return true;
+
+    return false;
 }
 
 void setRobotAvoidanceCell(Cell pos)
@@ -85,9 +104,12 @@ static bool wouldThreatenRobot(const DynamicObstacle &obs, float nx, float ny)
 
 static bool canPlace(int r, int c)
 {
-    if (!inBounds(r, c)) return false;
-    if (blocked[r][c]) return false;
-    if (dynamicBlocked[r][c]) return false;
+    if (isForbiddenDynamicObstacleCell(r, c))
+        return false;
+
+    if (dynamicBlocked[r][c])
+        return false;
+
     return true;
 }
 
@@ -138,7 +160,7 @@ static bool isLineFree(float x1, float y1, float x2, float y2)
 
     while (true)
     {
-        if (!inBounds(r, c) || blocked[r][c])
+        if (isForbiddenDynamicObstacleCell(r, c))
             return false;
 
         if (r == r2 && c == c2)
@@ -162,34 +184,113 @@ static bool isLineFree(float x1, float y1, float x2, float y2)
     return true;
 }
 
-static void moveStraight(DynamicObstacle &obs)
+static void clearReservationGrids()
 {
+    for (int i = 1; i <= rows; i++)
+    {
+        for (int j = 1; j <= cols; j++)
+        {
+            occupiedCount[i][j] = 0;
+            reservedNext[i][j] = false;
+        }
+    }
+}
+
+static void buildOccupiedGrid()
+{
+    clearReservationGrids();
+
+    for (const auto &obs : obstacles)
+    {
+        if (!inBounds(obs.pos.r, obs.pos.c))
+            continue;
+
+        occupiedCount[obs.pos.r][obs.pos.c]++;
+    }
+}
+
+static bool occupiedByAnotherObstacle(const DynamicObstacle &obs, Cell p)
+{
+    if (!inBounds(p.r, p.c))
+        return true;
+
+    int count = occupiedCount[p.r][p.c];
+
+    if (p == obs.pos)
+        count--;
+
+    return count > 0;
+}
+
+static void reserveCell(Cell p)
+{
+    if (inBounds(p.r, p.c))
+        reservedNext[p.r][p.c] = true;
+}
+
+static bool canReserveCell(Cell p)
+{
+    if (!inBounds(p.r, p.c))
+        return false;
+
+    return !reservedNext[p.r][p.c];
+}
+
+static void stopObstacleMovement(DynamicObstacle &obs)
+{
+    obs.vx = 0.0f;
+    obs.vy = 0.0f;
+    reserveCell(obs.pos);
+}
+
+static void moveStraightWithReservation(DynamicObstacle &obs)
+{
+    if (obs.vx == 0.0f && obs.vy == 0.0f)
+    {
+        reserveCell(obs.pos);
+        return;
+    }
+
     float nx = obs.x + obs.vx;
     float ny = obs.y + obs.vy;
 
+    Cell next = roundedCell(nx, ny);
+
     if (wouldThreatenRobot(obs, nx, ny))
     {
-        obs.vx = 0.0f;
-        obs.vy = 0.0f;
+        stopObstacleMovement(obs);
         return;
     }
 
     if (!isLineFree(obs.x, obs.y, nx, ny))
     {
-        obs.vx = 0.0f;
-        obs.vy = 0.0f;
+        stopObstacleMovement(obs);
         return;
     }
 
-    int nr = roundToCell(nx);
-    int nc = roundToCell(ny);
+    if (isForbiddenDynamicObstacleCell(next.r, next.c))
+    {
+        stopObstacleMovement(obs);
+        return;
+    }
 
-    if (!inBounds(nr, nc)) return;
-    if (blocked[nr][nc]) return;
+    if (occupiedByAnotherObstacle(obs, next))
+    {
+        stopObstacleMovement(obs);
+        return;
+    }
+
+    if (!canReserveCell(next))
+    {
+        stopObstacleMovement(obs);
+        return;
+    }
 
     obs.x = nx;
     obs.y = ny;
-    obs.pos = {nr, nc};
+    obs.pos = next;
+
+    reserveCell(obs.pos);
 }
 
 static void syncToGrid()
@@ -202,7 +303,9 @@ static void syncToGrid()
     {
         int r = obs.pos.r;
         int c = obs.pos.c;
-        dynamicBlocked[r][c] = true;
+
+        if (inBounds(r, c))
+            dynamicBlocked[r][c] = true;
     }
 }
 
@@ -224,6 +327,19 @@ static void updateBehavior(DynamicObstacle &obs)
     }
 }
 
+static void updateAllObstaclesSafely()
+{
+    buildOccupiedGrid();
+
+    for (auto &obs : obstacles)
+    {
+        updateBehavior(obs);
+        moveStraightWithReservation(obs);
+    }
+
+    syncToGrid();
+}
+
 static void dynamicObstacleLoop()
 {
     while (!stopRequested.load())
@@ -238,16 +354,9 @@ static void dynamicObstacleLoop()
         {
             lock_guard<mutex> lock(simMutex);
 
-            if (allCovered())
-                break;
-
-            for (auto &obs : obstacles)
-            {
-                updateBehavior(obs);
-                moveStraight(obs);
-            }
-
-            syncToGrid();
+            // Do not stop dynamic obstacles just because coverage is complete.
+            // The mission is only complete after the robot safely returns to base.
+            updateAllObstaclesSafely();
         }
     }
 }

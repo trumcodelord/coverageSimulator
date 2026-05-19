@@ -1,10 +1,10 @@
 #include "opencv.h"
 
-#include "../visualization/entity_renderer.h"
-#include "../visualization/hud_renderer.h"
-#include "../visualization/map_renderer.h"
-#include "../visualization/visual_assets.h"
-#include "../visualization/visual_layout.h"
+#include "entity_renderer.h"
+#include "hud_renderer.h"
+#include "map_renderer.h"
+#include "visual_assets.h"
+#include "visual_layout.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -45,6 +45,7 @@ void drawFrame(const Robot &rb, bool showPath, int delay)
     if (showPath)
         paintPath(canvas, rb);
 
+    paintBase(canvas, rb);
     paintDynamicObstacles(canvas);
     paintRobot(canvas, rb);
     paintHUD(canvas, rb, delay);

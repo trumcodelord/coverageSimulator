@@ -25,14 +25,13 @@ static Cell nextCell(Cell p, int dir)
 
 static bool canStandCell(int r, int c)
 {
-    return inBounds(r, c) && !blocked[r][c];
+    return !isForbiddenDynamicObstacleCell(r, c);
 }
 
 static int distManhattan(Cell a, Cell b)
 {
     return abs(a.r - b.r) + abs(a.c - b.c);
 }
-
 
 static Cell getHome(DynamicObstacle &obs)
 {
@@ -77,7 +76,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
 {
     Cell home = getHome(obs);
 
-
     if (obs.stateTick == 0 && obs.waitTick == 0)
     {
         obs.state = GUARD_WAIT_CENTER;
@@ -118,7 +116,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
             return;
         }
 
-
         obs.state = GUARD_MOVE_BACK;
         obs.stateTick = 0;
         return;
@@ -156,7 +153,6 @@ void updateGuardBehavior(DynamicObstacle &obs)
 
             return;
         }
-
 
         obs.state = GUARD_WAIT_CENTER;
         obs.stateTick = 0;

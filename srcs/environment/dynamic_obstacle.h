@@ -48,3 +48,8 @@ void stopDynamicObstacle();
 void waitDynamicObstacle();
 void addObstacle(int r, int c, ObstacleType type);
 void setRobotAvoidanceCell(Cell pos);
+
+// Shared safety rule for all dynamic obstacle behavior modules.
+// Dynamic obstacles may move through free operational space, but they must not
+// occupy static obstacles, out-of-bound cells, or the robot base/start cell.
+bool isForbiddenDynamicObstacleCell(int r, int c);

@@ -23,7 +23,7 @@ static bool canMoveDir(Cell p, int dir)
     else if (dir == 2) nr -= 1;
     else if (dir == 3) nc -= 1;
 
-    return inBounds(nr, nc) && !blocked[nr][nc];
+    return !isForbiddenDynamicObstacleCell(nr, nc);
 }
 
 void updateRandomBehavior(DynamicObstacle &obs)
