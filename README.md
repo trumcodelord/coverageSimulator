@@ -342,7 +342,7 @@ demo_04_static_maze
 demo_05_guard_alert
 demo_06_vehicle_corridor
 demo_07_vehicle_detour
-demo_08_random_obstacle_room
+demo_08_unknown_hazard_room
 demo_09_low_energy_large_room
 demo_10_blocked_return_preserve
 ```
@@ -356,7 +356,7 @@ demo_10_blocked_return_preserve
 | `demo_05_guard_alert` | Robot cảnh giác/replan quanh guard |
 | `demo_06_vehicle_corridor` | Tương tác với vehicle trong hành lang |
 | `demo_07_vehicle_detour` | Đường bị chặn và có đường vòng |
-| `demo_08_random_obstacle_room` | Unknown hazard trong phòng mở |
+| `demo_08_unknown_hazard_room` | Unknown hazard trong phòng mở |
 | `demo_09_low_energy_large_room` | Test pin thấp, return và recharge |
 | `demo_10_blocked_return_preserve` | Đường về bị chặn, critical và preserve |
 
