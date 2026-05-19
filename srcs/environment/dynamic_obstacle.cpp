@@ -1,9 +1,7 @@
 #include "dynamic_obstacle.h"
 #include "grid.h"
-#include "rng.h"
 #include "guard.h"
 #include "vehicle.h"
-#include "random_walk.h"
 
 #include <thread>
 #include <chrono>
@@ -13,8 +11,9 @@
 
 using namespace std;
 
-static const int SLEEP_MIN_MS = 250;
-static const int SLEEP_MAX_MS = 700;
+// Fixed update cadence for smoother obstacle animation.
+// Speeds in guard/vehicle modules are interpreted as cell/frame.
+static const int OBSTACLE_FRAME_MS = 33;
 
 static thread worker;
 static atomic<bool> stopRequested(false);
@@ -135,10 +134,8 @@ void addObstacle(int r, int c, ObstacleType type)
 
     if (type == ObstacleType::GUARD)
         obs.state = GUARD_WAIT_CENTER;
-    else if (type == ObstacleType::VEHICLE)
-        obs.state = VEHICLE_WAIT;
     else
-        obs.state = RANDOM_WAIT;
+        obs.state = VEHICLE_WAIT;
 
     obstacles.push_back(obs);
 }
@@ -320,10 +317,6 @@ static void updateBehavior(DynamicObstacle &obs)
     case ObstacleType::VEHICLE:
         updateVehicleBehavior(obs);
         break;
-
-    case ObstacleType::RANDOM:
-        updateRandomBehavior(obs);
-        break;
     }
 }
 
@@ -345,7 +338,7 @@ static void dynamicObstacleLoop()
     while (!stopRequested.load())
     {
         this_thread::sleep_for(
-            chrono::milliseconds(randInt(SLEEP_MIN_MS, SLEEP_MAX_MS))
+            chrono::milliseconds(OBSTACLE_FRAME_MS)
         );
 
         if (stopRequested.load())

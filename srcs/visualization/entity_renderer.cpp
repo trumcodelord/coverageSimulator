@@ -282,10 +282,5 @@ void paintDynamicObstacles(Mat &canvas)
 
             overlayImage(canvas, rotatedVehicle, center, size);
         }
-        else if (obs.type == ObstacleType::RANDOM)
-        {
-            int size = max(16, (int)(visualCellSize() * 0.75));
-            overlayImage(canvas, randomIcon(), center, size);
-        }
     }
 }

@@ -7,9 +7,13 @@
 
 using namespace std;
 
-static const int GUARD_WAIT_CENTER_MIN = 3;
-static const int GUARD_WAIT_CENTER_MAX = 6;
+// 45 frames ~= 1.5 seconds, 90 frames ~= 3 seconds.
+static const int GUARD_WAIT_CENTER_MIN = 45;
+static const int GUARD_WAIT_CENTER_MAX = 90;
 static const int GUARD_MAX_RADIUS = 2;
+
+// Speed is measured in cell/frame. The dynamic obstacle loop runs at ~30 FPS.
+static const float GUARD_SPEED = 0.02f;
 
 static Cell nextCell(Cell p, int dir)
 {
@@ -66,10 +70,10 @@ static void setMoveVelocity(DynamicObstacle &obs, int dir)
     obs.vx = 0.0f;
     obs.vy = 0.0f;
 
-    if (dir == 0) obs.vx = 0.3f;
-    else if (dir == 1) obs.vy = 0.3f;
-    else if (dir == 2) obs.vx = -0.3f;
-    else if (dir == 3) obs.vy = -0.3f;
+    if (dir == 0) obs.vx = GUARD_SPEED;
+    else if (dir == 1) obs.vy = GUARD_SPEED;
+    else if (dir == 2) obs.vx = -GUARD_SPEED;
+    else if (dir == 3) obs.vy = -GUARD_SPEED;
 }
 
 void updateGuardBehavior(DynamicObstacle &obs)

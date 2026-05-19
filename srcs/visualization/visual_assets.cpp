@@ -12,7 +12,6 @@ namespace
 {
     Mat iconGuard;
     Mat iconVehicle;
-    Mat iconRandom;
 
     Mat iconBase;
     Mat iconRobot;
@@ -35,7 +34,6 @@ void loadVisualizationAssets()
 {
     iconGuard = imread("assets/policemen.png", IMREAD_UNCHANGED);
     iconVehicle = imread("assets/jeep.png", IMREAD_UNCHANGED);
-    iconRandom = imread("assets/question.png", IMREAD_UNCHANGED);
 
     iconBase = loadFirstAvailable({
         "assets/base.png",
@@ -59,11 +57,6 @@ const Mat& guardIcon()
 const Mat& vehicleIcon()
 {
     return iconVehicle;
-}
-
-const Mat& randomIcon()
-{
-    return iconRandom;
 }
 
 const Mat& baseIcon()

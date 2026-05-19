@@ -89,8 +89,7 @@ void readGrid(istream &in)
             }
             else if (c == 'W')
             {
-                blocked[i][j] = false;
-                addObstacle(i, j, ObstacleType::RANDOM);
+                throw runtime_error("Ky tu W/random walker da duoc go bo. Hay dung G hoac V.");
             }
             else
             {

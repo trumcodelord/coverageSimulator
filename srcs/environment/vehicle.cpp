@@ -6,9 +6,10 @@
 
 using namespace std;
 
-static const float VEHICLE_SPEED = 0.35f;
-static const int VEHICLE_WAIT_MIN = 3;
-static const int VEHICLE_WAIT_MAX = 6;
+static const float VEHICLE_SPEED = 0.03f;
+
+static const int VEHICLE_WAIT_MIN = 45;
+static const int VEHICLE_WAIT_MAX = 90;
 
 static bool canStandCell(int r, int c)
 {

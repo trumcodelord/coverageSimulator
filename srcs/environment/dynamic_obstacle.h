@@ -7,8 +7,7 @@
 enum class ObstacleType
 {
     GUARD,
-    VEHICLE,
-    RANDOM
+    VEHICLE
 };
 
 enum ObstacleState
@@ -18,11 +17,7 @@ enum ObstacleState
 
     GUARD_WAIT_CENTER,
     GUARD_MOVE_OUT,
-    GUARD_MOVE_BACK,
-
-    RANDOM_WAIT,
-    RANDOM_PICK_DIRECTION,
-    RANDOM_MOVE
+    GUARD_MOVE_BACK
 };
 
 struct DynamicObstacle
@@ -30,7 +25,7 @@ struct DynamicObstacle
     Cell pos;
     ObstacleType type;
     int dir = 0;
-    ObstacleState state = RANDOM_WAIT;
+    ObstacleState state = VEHICLE_WAIT;
     std::vector<Cell> path;
     int stateTick = 0;
     int waitTick = 0;
