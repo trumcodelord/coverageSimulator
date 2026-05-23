@@ -175,6 +175,7 @@ void enterReturnToBase(
 
     rb.returnCount++;
     ctx.returnWaitCount = 0;
+    ctx.returnToTerminate = false;
 
     clearRobotPath(rb);
     switchMissionMode(ctx, RETURN_TO_BASE);
@@ -204,6 +205,15 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             ctx.outcome = MISSION_SUCCESS;
             ctx.shouldStop = true;
             setHUDState("DONE");
+            return;
+        }
+
+        if (ctx.returnToTerminate)
+        {
+            ctx.outcome = MISSION_PARTIAL_RETURNED;
+            ctx.shouldStop = true;
+            ctx.needWaitDraw = false;
+            setHUDState("PARTIAL_RETURNED");
             return;
         }
 

@@ -6,6 +6,7 @@
 #include "opencv.h"
 #include "path_builder.h"
 #include "path_safety.h"
+#include "return_to_base.h"
 #include "robot_lifecycle.h"
 
 #include <iostream>
@@ -112,16 +113,26 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
-        cout << "[STOP] HOLD_SAFE qua lau ma van khong co duong phuc hoi.\n";
+        cout << "[RETURN] HOLD_SAFE qua lau, khong the tiep tuc coverage. Thu quay ve base.\n";
 
-        ctx.outcome = stoppedOutcome(ctx.coverageComplete);
-        ctx.shouldStop = true;
-        setHUDState("STOP");
+        ctx.holdCycleCount = 0;
+        ctx.holdTick = 0;
+        ctx.retryCount = 0;
+        ctx.alertFailCount = 0;
+        ctx.needWaitDraw = false;
+        ctx.actionCooldownTicks = 0;
+
+        enterReturnToBase(
+            ctx,
+            rb,
+            "[RETURN] Khong recover duoc coverage path. Quay ve base neu con kha nang."
+        );
+
+        ctx.returnToTerminate = true;
+        return;
     }
-    else
-    {
-        setCoverageCooldown(ctx, holdWaitTicks());
-    }
+
+    setCoverageCooldown(ctx, holdWaitTicks());
 }
 
 void handleNoUsablePath(Robot &rb, CoverageContext &ctx)

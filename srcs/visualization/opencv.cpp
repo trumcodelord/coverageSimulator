@@ -6,9 +6,24 @@
 #include "visual_assets.h"
 #include "visual_layout.h"
 
+#include <filesystem>
 #include <opencv2/opencv.hpp>
 
 using namespace cv;
+
+namespace
+{
+    Mat lastFrame;
+
+    void ensureParentDirectory(const std::string &path)
+    {
+        std::filesystem::path p(path);
+        std::filesystem::path parent = p.parent_path();
+
+        if (!parent.empty())
+            std::filesystem::create_directories(parent);
+    }
+}
 
 void initWindow()
 {
@@ -50,6 +65,8 @@ void drawFrame(const Robot &rb, bool showPath, int delay)
     paintRobot(canvas, rb);
     paintHUD(canvas, rb, delay);
 
+    lastFrame = canvas.clone();
+
     imshow(visualWindowName(), canvas);
 }
 
@@ -59,4 +76,13 @@ void waitFrame(int delay)
         delay = 0;
 
     waitKey(delay);
+}
+
+bool saveCurrentFrame(const std::string &filename)
+{
+    if (lastFrame.empty())
+        return false;
+
+    ensureParentDirectory(filename);
+    return imwrite(filename, lastFrame);
 }

@@ -17,6 +17,7 @@ struct CoverageContext
     int actionCooldownTicks = 0;
 
     bool coverageComplete = false;
+    bool returnToTerminate = false;
     bool shouldStop = false;
     bool needWaitDraw = false;
 };

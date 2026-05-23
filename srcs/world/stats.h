@@ -1,20 +1,32 @@
 #pragma once
+
 #include "types.h"
+
 #include <string>
 
 struct CoverageStats
 {
-    int totalSteps = 0;
-    int totalEdges = 0;
-    int overlapEdges = 0;
-    int repeatedEdgeTraversals = 0;
-    double coverageEfficiency = 0.0;
+    int rows = 0;
+    int cols = 0;
+    int totalCells = 0;
 
     int initialFreeCells = 0;
-    int coveredCells = 0;
-    int dynamicBlockedCells = 0;
+    int obstacleCells = 0;
+    double obstacleDensity = 0.0;
 
+    int coveredCells = 0;
     double coverageRate = 0.0;
+
+    int totalSteps = 0;
+    int energyUsed = 0;
+    int remainingEnergy = 0;
+    int returnCount = 0;
+    int rechargeCount = 0;
+
+    MissionOutcome missionOutcome = MISSION_RUNNING;
+    bool finalAtBase = false;
+
+    int dynamicBlockedCells = 0;
 };
 
 CoverageStats collectStats(const Robot& rb);
@@ -22,3 +34,10 @@ CoverageStats collectStats(const Robot& rb);
 void printStats(const CoverageStats& s);
 
 void logStats(const CoverageStats& s, const std::string& filename);
+
+void appendBenchmarkCsv(
+    const CoverageStats& s,
+    const std::string& csvFile,
+    const std::string& mapName,
+    const std::string& screenshotPath
+);

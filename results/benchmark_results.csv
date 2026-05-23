@@ -1,0 +1,5 @@
+map_name,rows,cols,total_cells,initial_free_cells,obstacle_cells,obstacle_density,covered_cells,coverage_rate,total_steps,energy_used,remaining_energy,return_count,recharge_count,mission_outcome,final_at_base,dynamic_blocked_cells,screenshot_path
+bench_g1_density_90,20,20,400,108,292,73.00,23,21.30,42,42,78,0,0,FAILED,0,0,results/screenshots/bench_g1_density_90_FAILED.png
+bench_g1_density_70,20,20,400,183,217,54.25,51,27.87,96,96,24,0,0,FAILED,0,0,results/screenshots/bench_g1_density_70_FAILED.png
+bench_g1_density_00_small,5,9,45,45,0,0.00,45,100.00,56,56,64,1,0,SUCCESS,1,0,results/screenshots/bench_g1_density_00_small_SUCCESS.png
+bench_g1_density_60,20,20,400,210,190,47.50,56,26.67,108,108,12,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1_density_60_PARTIAL_RETURNED.png

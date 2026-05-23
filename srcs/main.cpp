@@ -1,20 +1,37 @@
 #include "coverage.h"
 #include "environment.h"
 #include "input.h"
+#include "opencv.h"
 #include "stats.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <string>
 
 using namespace std;
 
+namespace
+{
+    string sanitizePathToken(string s)
+    {
+        for (char &ch : s)
+        {
+            if (ch == '/' || ch == '\\' || ch == ':' || ch == ' ' || ch == '\t')
+                ch = '_';
+        }
+        return s;
+    }
+}
+
 int main()
 {
-    string filename;
+    string mapName;
+
     cout << "Nhap duong dan file input: ";
-    cin >> filename;
-    filename = "tests/" + filename + ".txt";
+    cin >> mapName;
+
+    string filename = "tests/" + mapName + ".txt";
 
     ifstream fin(filename);
     if (!fin)
@@ -44,8 +61,24 @@ int main()
     waitEnvironment();
 
     CoverageStats s = collectStats(rb);
+
+    string safeMapName = sanitizePathToken(mapName);
+    string outcome = missionOutcomeName(s.missionOutcome);
+
+    string screenshotPath =
+        "results/screenshots/" + safeMapName + "_" + outcome + ".png";
+
+    drawFrame(rb, true, 0);
+    saveCurrentFrame(screenshotPath);
+
     printStats(s);
     logStats(s, "coverage_log.txt");
+    appendBenchmarkCsv(
+        s,
+        "results/benchmark_results.csv",
+        mapName,
+        screenshotPath
+    );
 
     return 0;
 }
