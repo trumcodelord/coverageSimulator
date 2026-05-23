@@ -13,8 +13,10 @@ void switchMissionMode(CoverageContext &ctx, RobotMode next)
 
     ctx.mode = next;
 
-    logBehavior("[MODE] -> " + robotModeName(next));
-    setHUDState(robotModeName(next));
+    string name = modeName(next);
+
+    logBehavior("[MODE] -> " + name);
+    setHUDState(name);
 }
 
 void enterAlertMode(CoverageContext &ctx)
