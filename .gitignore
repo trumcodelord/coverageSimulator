@@ -9,15 +9,7 @@ Release/
 cmake-build-*/
 *.o
 *.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
 *.exe
-*.out
-*.app
-*.txt
 
 # CodeBlocks
 *.depend
@@ -26,32 +18,19 @@ cmake-build-*/
 *.cbp.save
 *.cbp
 
-# CMake / Make
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-compile_commands.json
-
-# Logs and generated runtime files
-*.log
+# Generated runtime files
 coverage_log.txt
 run_log.txt
 debug_log.txt
-*.tmp
-*.temp
-
-# Test/output artifacts
+results/
 outputs/
 screenshots/
 videos/
 captures/
 recordings/
-*.avi
-*.mp4
-*.mov
-*.mkv
-*.gif
+*.log
+*.tmp
+*.temp
 
 # OS files
 .DS_Store
@@ -65,16 +44,15 @@ desktop.ini
 *.swo
 *.sublime-workspace
 
-# Python helper/cache files, if any
+# Python cache
 __pycache__/
 *.pyc
 .venv/
 venv/
 
-# Large/generated docs
+# Generated documents
 *.pdf
 *.docx
-~$*.docx
 
 # Keep source assets and tests
 !assets/
@@ -85,5 +63,4 @@ venv/
 !*.h
 !*.hpp
 !*.c
-!*.txt
 !README.md
