@@ -1,5 +1,6 @@
 #include "return_to_base.h"
 
+#include "behavior_log.h"
 #include "coverage_timing.h"
 #include "energy_model.h"
 #include "mission_policy.h"
@@ -11,7 +12,6 @@
 #include "robot_motion.h"
 #include "tactical_yield.h"
 
-#include <iostream>
 #include <vector>
 
 using namespace std;
@@ -70,7 +70,7 @@ namespace
         Robot &rb,
         const char *message
     ) {
-        cout << message << '\n';
+        logBehavior(message);
 
         clearRobotPath(rb);
         switchMissionMode(ctx, POWER_SAVE);
@@ -87,7 +87,7 @@ namespace
         Robot &rb,
         const char *message
     ) {
-        cout << message << '\n';
+        logBehavior(message);
 
         enterWaitForCommandMode(ctx, rb);
         setCoverageCooldown(ctx, commandWaitTicks());
@@ -99,7 +99,7 @@ void waitReturnToBase(
     Robot &rb,
     const char *message
 ) {
-    cout << message << '\n';
+    logBehavior(message);
 
     clearRobotPath(rb);
     ctx.needWaitDraw = true;
@@ -110,7 +110,7 @@ void waitReturnToBase(
     {
         if (tryTacticalYieldMove(rb, ctx))
         {
-            cout << "[YIELD] Robot tam lui de giai phong diem nghen.\n";
+            logBehavior("[YIELD] Robot tam lui de giai phong diem nghen.");
 
             ctx.needWaitDraw = false;
             ctx.returnWaitCount = 0;
@@ -123,7 +123,7 @@ void waitReturnToBase(
 
     if (ctx.returnWaitCount >= maxReturnWaitBeforeDetour())
     {
-        cout << "[RETURN] Cho qua lau, thu tim duong vong.\n";
+        logBehavior("[RETURN] Cho qua lau, thu tim duong vong.");
 
         PathBuildResult detour = rebuildSafeDetourPathToBase(rb);
 
@@ -171,7 +171,7 @@ void enterReturnToBase(
     if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
         return;
 
-    cout << message << '\n';
+    logBehavior(message);
 
     rb.returnCount++;
     ctx.returnWaitCount = 0;
@@ -205,6 +205,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             ctx.outcome = MISSION_SUCCESS;
             ctx.shouldStop = true;
             setHUDState("DONE");
+            logBehavior("[MISSION] SUCCESS. Robot da ve base.");
             return;
         }
 
@@ -214,6 +215,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             ctx.shouldStop = true;
             ctx.needWaitDraw = false;
             setHUDState("PARTIAL_RETURNED");
+            logBehavior("[MISSION] PARTIAL_RETURNED. Robot da ve base an toan.");
             return;
         }
 
@@ -284,6 +286,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         ctx.outcome = powerLossOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
         setHUDState("POWER_LOSS");
+        logBehavior("[MISSION] POWER_LOSS.");
         return;
     }
 

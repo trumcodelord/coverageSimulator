@@ -6,6 +6,7 @@
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -15,26 +16,29 @@ using namespace cv;
 namespace
 {
     string hudState = "NONE";
+    deque<string> hudEvents;
+
+    constexpr int MAX_VISIBLE_HUD_EVENTS = 13;
+    constexpr int MAX_STORED_HUD_EVENTS = 60;
 
     Scalar hudStateColor(const string &state)
     {
         if (state == "NONE") return Scalar(60, 60, 60);
         if (state == "NORMAL" || state == "FIND") return Scalar(0, 140, 255);
-        if (state == "ALERT" || state == "RUN!") return Scalar(0, 180, 0);
+
+        if (state == "ALERT" || state == "RUN!")
+            return Scalar(0, 180, 0);
 
         if (state == "HOLD_SAFE" ||
             state == "WAIT" ||
             state == "WAIT_FOR_COMMAND")
-        {
             return Scalar(0, 0, 220);
-        }
 
         if (state == "RETURN_TO_BASE" ||
             state == "RETURN_WAIT" ||
-            state == "RETURN_DETOUR")
-        {
+            state == "RETURN_DETOUR" ||
+            state == "PARTIAL_RETURNED")
             return Scalar(0, 165, 255);
-        }
 
         if (state == "RECHARGING") return Scalar(180, 80, 0);
         if (state == "POWER_SAVE") return Scalar(120, 120, 120);
@@ -42,13 +46,21 @@ namespace
         if (state == "STOP" ||
             state == "FINAL_PUSH" ||
             state == "POWER_LOSS")
-        {
             return Scalar(0, 0, 255);
-        }
 
         if (state == "DONE") return Scalar(0, 160, 0);
 
         return Scalar(60, 60, 60);
+    }
+
+    string trimEventForHUD(const string &event)
+    {
+        constexpr int MAX_LEN = 46;
+
+        if ((int)event.size() <= MAX_LEN)
+            return event;
+
+        return event.substr(0, MAX_LEN - 3) + "...";
     }
 
     bool fitHUDInBox(
@@ -64,7 +76,7 @@ namespace
         const int padding = 10;
         const int fontFace = FONT_HERSHEY_SIMPLEX;
 
-        for (double scale = 0.75; scale >= 0.38; scale -= 0.05)
+        for (double scale = 0.70; scale >= 0.30; scale -= 0.04)
         {
             int t = (scale >= 0.55) ? 2 : 1;
             int maxTextWidth = 0;
@@ -73,20 +85,13 @@ namespace
             for (const string &line : lines)
             {
                 int baseline = 0;
-
-                Size textSize = getTextSize(
-                    line,
-                    fontFace,
-                    scale,
-                    t,
-                    &baseline
-                );
+                Size textSize = getTextSize(line, fontFace, scale, t, &baseline);
 
                 maxTextWidth = max(maxTextWidth, textSize.width);
                 maxTextHeight = max(maxTextHeight, textSize.height + baseline);
             }
 
-            int step = max(16, (int)(maxTextHeight * 1.45));
+            int step = max(13, (int)(maxTextHeight * 1.25));
             int totalHeight = step * (int)lines.size();
 
             if (maxTextWidth + 2 * padding <= box.width &&
@@ -160,6 +165,33 @@ namespace
 
         return false;
     }
+
+    vector<string> buildHUDLines(const Robot &rb)
+    {
+        vector<string> lines;
+
+        lines.push_back("Steps: " + to_string(rb.steps));
+        lines.push_back(
+            "Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy)
+        );
+        lines.push_back("Used: " + to_string(rb.totalEnergyUsed));
+        lines.push_back("Returns: " + to_string(rb.returnCount));
+        lines.push_back("Recharges: " + to_string(rb.rechargeCount));
+        lines.push_back("State: " + hudState);
+
+        if (!hudEvents.empty())
+        {
+            lines.push_back("----------------");
+            lines.push_back("Behavior log:");
+
+            int start = max(0, (int)hudEvents.size() - MAX_VISIBLE_HUD_EVENTS);
+
+            for (int i = start; i < (int)hudEvents.size(); i++)
+                lines.push_back(trimEventForHUD(hudEvents[i]));
+        }
+
+        return lines;
+    }
 }
 
 void setHUDState(const string &state)
@@ -172,23 +204,28 @@ void clearHUDState()
     hudState = "NONE";
 }
 
+void pushHUDEvent(const string &event)
+{
+    if (event.empty())
+        return;
+
+    if (!hudEvents.empty() && hudEvents.back() == event)
+        return;
+
+    hudEvents.push_back(event);
+
+    while ((int)hudEvents.size() > MAX_STORED_HUD_EVENTS)
+        hudEvents.pop_front();
+}
+
+void clearHUDEvents()
+{
+    hudEvents.clear();
+}
+
 void paintHUD(Mat &canvas, const Robot &rb, int delay)
 {
-    bool hasActivePath = (rb.pathID < (int)rb.path.size());
-    int currentPathLength = (int)rb.path.size();
-
-    vector<string> lines;
-
-    lines.push_back("Steps: " + to_string(rb.steps));
-    lines.push_back(
-        "Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy)
-    );
-    lines.push_back("Used: " + to_string(rb.totalEnergyUsed));
-    lines.push_back("Returns: " + to_string(rb.returnCount));
-    lines.push_back("Recharges: " + to_string(rb.rechargeCount));
-    lines.push_back(string("Active path: ") + (hasActivePath ? "YES" : "NO"));
-    lines.push_back("Path length: " + to_string(currentPathLength));
-    lines.push_back("State: " + hudState);
+    vector<string> lines = buildHUDLines(rb);
 
     Rect hudBox;
     double fontScale = 0.0;
@@ -210,7 +247,10 @@ void paintHUD(Mat &canvas, const Robot &rb, int delay)
     {
         Scalar color = Scalar(40, 40, 40);
 
-        if (i == (int)lines.size() - 1)
+        if (lines[i] == "Behavior log:")
+            color = Scalar(80, 80, 80);
+
+        if (i < 6 && lines[i].rfind("State:", 0) == 0)
             color = hudStateColor(hudState);
 
         putText(

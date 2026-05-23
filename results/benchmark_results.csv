@@ -5,3 +5,13 @@ bench_g1_density_00_small,5,9,45,45,0,0.00,45,100.00,56,56,64,1,0,SUCCESS,1,0,re
 bench_g1_density_60,20,20,400,210,190,47.50,56,26.67,108,108,12,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1_density_60_PARTIAL_RETURNED.png
 bench_g1_connected_d70,20,20,400,163,237,59.25,52,31.90,102,102,18,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1_connected_d70_PARTIAL_RETURNED.png
 bench_g1_connected_d70,20,20,400,163,237,59.25,163,100.00,288,288,132,1,0,SUCCESS,1,0,results/screenshots/bench_g1_connected_d70_SUCCESS.png
+bench_g1d_long_snake_feasible,20,20,400,210,190,47.50,104,49.52,206,206,240,1,1,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_long_snake_feasible_PARTIAL_RETURNED.png
+bench_g1d_long_snake_feasible,20,20,400,210,190,47.50,104,49.52,206,206,240,1,1,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_long_snake_feasible_PARTIAL_RETURNED.png
+bench_g1d_long_snake_infeasible,20,20,400,210,190,47.50,52,24.76,102,102,18,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_long_snake_infeasible_PARTIAL_RETURNED.png
+bench_g1d_multi_branch_feasible,20,20,400,146,254,63.50,146,100.00,170,170,60,1,0,SUCCESS,1,0,results/screenshots/bench_g1d_multi_branch_feasible_SUCCESS.png
+bench_g1d_multi_branch_power_save,20,20,400,146,254,63.50,146,100.00,292,292,18,6,5,SUCCESS,1,0,results/screenshots/bench_g1d_multi_branch_power_save_SUCCESS.png
+bench_g1d_multi_branch_power_save,20,20,400,146,254,63.50,146,100.00,292,292,18,6,5,SUCCESS,1,0,results/screenshots/bench_g1d_multi_branch_power_save_SUCCESS.png
+bench_g1d_multi_branch_power_save,20,20,400,146,254,63.50,146,100.00,292,292,18,6,5,SUCCESS,1,0,results/screenshots/bench_g1d_multi_branch_power_save_SUCCESS.png
+bench_g1d_multi_branch_power_61,20,20,400,146,254,63.50,49,33.56,50,50,11,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_multi_branch_power_61_PARTIAL_RETURNED.png
+bench_g1d_multi_branch_power_61,20,20,400,146,254,63.50,49,33.56,50,50,11,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_multi_branch_power_61_PARTIAL_RETURNED.png
+bench_g1d_multi_branch_power_61,20,20,400,146,254,63.50,49,33.56,50,50,11,1,0,PARTIAL_RETURNED,1,0,results/screenshots/bench_g1d_multi_branch_power_61_PARTIAL_RETURNED.png

@@ -13,3 +13,6 @@ bool saveCurrentFrame(const std::string &filename);
 
 void setHUDState(const std::string &state);
 void clearHUDState();
+
+void pushHUDEvent(const std::string &event);
+void clearHUDEvents();

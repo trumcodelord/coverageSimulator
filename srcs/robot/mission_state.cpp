@@ -1,54 +1,49 @@
 #include "mission_state.h"
 
+#include "behavior_log.h"
 #include "opencv.h"
 #include "path_builder.h"
 
-#include <iostream>
-
 using namespace std;
 
-void switchMissionMode(CoverageContext &ctx, RobotMode newMode)
+void switchMissionMode(CoverageContext &ctx, RobotMode next)
 {
-    if (ctx.mode == newMode)
+    if (ctx.mode == next)
         return;
 
-    ctx.mode = newMode;
-    ctx.stableStepCount = 0;
-    ctx.alertFailCount = 0;
-    ctx.holdTick = 0;
+    ctx.mode = next;
 
-    cout << "[MODE] -> " << modeName(ctx.mode) << '\n';
-    setHUDState(modeName(ctx.mode));
+    logBehavior("[MODE] -> " + robotModeName(next));
+    setHUDState(robotModeName(next));
 }
 
 void enterAlertMode(CoverageContext &ctx)
 {
-    if (ctx.mode == NORMAL)
-        switchMissionMode(ctx, ALERT);
-    else
-        setHUDState("ALERT");
+    switchMissionMode(ctx, ALERT);
 }
 
 void enterHoldSafeMode(CoverageContext &ctx, Robot &rb)
 {
-    switchMissionMode(ctx, HOLD_SAFE);
+    clearRobotPath(rb);
+    ctx.holdTick = 0;
     ctx.holdCycleCount = 0;
-    clearRobotPath(rb);
-    ctx.needWaitDraw = true;
-}
-
-void enterFinalPushMode(CoverageContext &ctx, Robot &rb)
-{
-    clearRobotPath(rb);
-    ctx.returnWaitCount = 0;
     ctx.needWaitDraw = false;
-    ctx.actionCooldownTicks = 0;
-    switchMissionMode(ctx, FINAL_PUSH);
+
+    switchMissionMode(ctx, HOLD_SAFE);
 }
 
 void enterWaitForCommandMode(CoverageContext &ctx, Robot &rb)
 {
     clearRobotPath(rb);
     ctx.needWaitDraw = true;
+
     switchMissionMode(ctx, WAIT_FOR_COMMAND);
+}
+
+void enterFinalPushMode(CoverageContext &ctx, Robot &rb)
+{
+    clearRobotPath(rb);
+    ctx.needWaitDraw = false;
+
+    switchMissionMode(ctx, FINAL_PUSH);
 }

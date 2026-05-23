@@ -1,5 +1,6 @@
 #include "coverage_handlers.h"
 
+#include "behavior_log.h"
 #include "coverage_timing.h"
 #include "mission_policy.h"
 #include "mission_state.h"
@@ -8,8 +9,6 @@
 #include "path_safety.h"
 #include "return_to_base.h"
 #include "robot_lifecycle.h"
-
-#include <iostream>
 
 using namespace std;
 
@@ -29,7 +28,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            cout << message << '\n';
+            logBehavior(message);
             clearRobotPath(rb);
 
             ctx.returnToTerminate = true;
@@ -47,7 +46,7 @@ namespace
         Robot &rb,
         CoverageContext &ctx
     ) {
-        cout << "[ENERGY] Khong con uncovered target nao kha thi voi return margin hien tai.\n";
+        logBehavior("[ENERGY] Khong con uncovered target nao kha thi voi return margin hien tai.");
 
         enterSafeTerminationReturn(
             ctx,
@@ -61,8 +60,11 @@ void printRetryMessage(const char *msg, int retryCount)
 {
     if (retryCount == 1 || retryCount % retryLogInterval() == 0)
     {
-        cout << msg << " Retry " << retryCount
-             << "/" << maxRetryCount() << '\n';
+        logBehavior(
+            string(msg) + " Retry " +
+            to_string(retryCount) + "/" +
+            to_string(maxRetryCount())
+        );
     }
 }
 
@@ -72,7 +74,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == PRESERVE)
     {
-        cout << "[COMMAND] PRESERVE. Chuyen sang POWER_SAVE.\n";
+        logBehavior("[COMMAND] PRESERVE. Chuyen sang POWER_SAVE.");
 
         clearRobotPath(rb);
         switchMissionMode(ctx, POWER_SAVE);
@@ -85,7 +87,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == HEROIC)
     {
-        cout << "[COMMAND] HEROIC. Tiep tuc nhiem vu den khi het nang luong.\n";
+        logBehavior("[COMMAND] HEROIC. Tiep tuc nhiem vu den khi het nang luong.");
         enterFinalPushMode(ctx, rb);
         return;
     }
@@ -106,7 +108,7 @@ void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        cout << "[HOLD] Active path bi chan lien tiep, chuyen sang HOLD_SAFE.\n";
+        logBehavior("[HOLD] Active path bi chan lien tiep, chuyen sang HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -138,7 +140,7 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (recovered.success)
     {
-        cout << "[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.\n";
+        logBehavior("[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.");
 
         switchMissionMode(ctx, ALERT);
 
@@ -157,13 +159,16 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
     {
-        cout << "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle "
-             << ctx.holdCycleCount << "/" << maxHoldCycles() << '\n';
+        logBehavior(
+            "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle " +
+            to_string(ctx.holdCycleCount) + "/" +
+            to_string(maxHoldCycles())
+        );
     }
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
-        cout << "[RETURN] HOLD_SAFE qua lau, khong the tiep tuc coverage. Thu quay ve base.\n";
+        logBehavior("[RETURN] HOLD_SAFE qua lau, khong the tiep tuc coverage. Thu quay ve base.");
 
         enterSafeTerminationReturn(
             ctx,
@@ -190,7 +195,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
 
     if (ctx.retryCount > maxRetryCount())
     {
-        cout << "[STOP] Khong tim duoc target/path sau nhieu lan thu lai.\n";
+        logBehavior("[STOP] Khong tim duoc target/path sau nhieu lan thu lai.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -200,7 +205,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        cout << "[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.\n";
+        logBehavior("[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -247,7 +252,7 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     if (ctx.retryCount > maxRetryCount())
     {
-        cout << "[STOP] Bi chan duong qua nhieu lan, dung mo phong.\n";
+        logBehavior("[STOP] Bi chan duong qua nhieu lan, dung mo phong.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -257,7 +262,7 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        cout << "[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.\n";
+        logBehavior("[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -275,7 +280,7 @@ void handleRecharging(Robot &rb, CoverageContext &ctx)
 
     rechargeRobot(rb);
 
-    cout << "[RECHARGE] Da sac day pin.\n";
+    logBehavior("[RECHARGE] Da sac day pin.");
 
     clearRobotPath(rb);
     switchMissionMode(ctx, NORMAL);

@@ -10,4 +10,8 @@ void setHUDState(const std::string &state);
 
 void clearHUDState();
 
+void pushHUDEvent(const std::string &event);
+
+void clearHUDEvents();
+
 void paintHUD(cv::Mat &canvas, const Robot &rb, int delay);
