@@ -5,14 +5,18 @@
 #include "stats.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace std;
 
 namespace
 {
+    namespace fs = std::filesystem;
+
     string sanitizePathToken(string s)
     {
         for (char &ch : s)
@@ -21,6 +25,41 @@ namespace
                 ch = '_';
         }
         return s;
+    }
+
+    string resolveInputFile(const string &mapName)
+    {
+        vector<string> candidates;
+
+        candidates.push_back(mapName);
+        candidates.push_back(mapName + ".txt");
+        candidates.push_back("tests/" + mapName);
+        candidates.push_back("tests/" + mapName + ".txt");
+
+        for (const string &candidate : candidates)
+        {
+            if (fs::exists(candidate))
+                return candidate;
+        }
+
+        if (fs::exists("tests") && fs::is_directory("tests"))
+        {
+            for (const auto &entry : fs::recursive_directory_iterator("tests"))
+            {
+                if (!entry.is_regular_file())
+                    continue;
+
+                fs::path p = entry.path();
+
+                if (p.filename() == mapName || p.filename() == mapName + ".txt")
+                    return p.string();
+
+                if (p.stem() == mapName)
+                    return p.string();
+            }
+        }
+
+        return "tests/" + mapName + ".txt";
     }
 }
 
@@ -31,7 +70,7 @@ int main()
     cout << "Nhap duong dan file input: ";
     cin >> mapName;
 
-    string filename = "tests/" + mapName + ".txt";
+    string filename = resolveInputFile(mapName);
 
     ifstream fin(filename);
     if (!fin)

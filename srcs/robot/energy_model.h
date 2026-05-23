@@ -43,3 +43,10 @@ bool isCriticalEnergy(
     int costToBase,
     const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
 );
+
+bool canVisitTargetAndReturn(
+    const Robot &rb,
+    int costToTarget,
+    int costTargetToBase,
+    const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
+);

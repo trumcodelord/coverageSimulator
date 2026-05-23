@@ -116,3 +116,23 @@ bool isCriticalEnergy(
     return rb.energy <= costToBase ||
            rb.energy <= policy.minEmergencyEnergy;
 }
+
+bool canVisitTargetAndReturn(
+    const Robot &rb,
+    int costToTarget,
+    int costTargetToBase,
+    const ReturnEnergyPolicy &policy
+) {
+    if (costToTarget < 0 || costTargetToBase < 0)
+        return false;
+
+    if (costToTarget >= INF || costTargetToBase >= INF)
+        return false;
+
+    long long requiredEnergy =
+        (long long)costToTarget +
+        (long long)costTargetToBase +
+        (long long)returnMarginForCost(costTargetToBase, policy);
+
+    return rb.energy >= requiredEnergy;
+}

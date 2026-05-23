@@ -1,6 +1,71 @@
 #include "path_builder.h"
+
+#include "energy_model.h"
 #include "planner.h"
 #include "path_safety.h"
+
+#include <algorithm>
+#include <vector>
+
+using namespace std;
+
+namespace
+{
+    struct CoverageCandidate
+    {
+        int costFromRobot = INF;
+        Cell target = {0, 0};
+    };
+
+    bool compareCandidateByDistance(
+        const CoverageCandidate &a,
+        const CoverageCandidate &b
+    ) {
+        if (a.costFromRobot != b.costFromRobot)
+            return a.costFromRobot < b.costFromRobot;
+
+        if (a.target.r != b.target.r)
+            return a.target.r < b.target.r;
+
+        return a.target.c < b.target.c;
+    }
+
+    vector<CoverageCandidate> collectReachableUncoveredCandidates(
+        const Robot &rb
+    ) {
+        vector<CoverageCandidate> candidates;
+
+        dijkstra(rb.pos, d, trace);
+
+        for (int i = 1; i <= rows; i++)
+        {
+            for (int j = 1; j <= cols; j++)
+            {
+                if (blocked[i][j] || covered[i][j])
+                    continue;
+
+                if (d[i][j] >= INF)
+                    continue;
+
+                candidates.push_back({d[i][j], {i, j}});
+            }
+        }
+
+        sort(
+            candidates.begin(),
+            candidates.end(),
+            compareCandidateByDistance
+        );
+
+        return candidates;
+    }
+
+    int estimateCostFromTargetToBase(Cell target, const Robot &rb)
+    {
+        dijkstra(target, d, trace);
+        return d[rb.base.r][rb.base.c];
+    }
+}
 
 void clearRobotPath(Robot &rb)
 {
@@ -41,7 +106,7 @@ PathBuildResult rebuildPathToBase(Robot &rb)
     if ((int)rb.path.size() <= 1)
     {
         clearRobotPath(rb);
-        return {isAtBase(rb), isAtBase(rb)};
+        return {isAtBase(rb), isAtBase(rb), false};
     }
 
     rb.pathID = 1;
@@ -52,7 +117,7 @@ PathBuildResult rebuildPathToBase(Robot &rb)
         return {};
     }
 
-    return {true, false};
+    return {true, false, false};
 }
 
 PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
@@ -68,12 +133,12 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
         return {};
     }
 
-    std::vector<Cell> candidate = tracePath(rb.pos, rb.base, trace);
+    vector<Cell> candidate = tracePath(rb.pos, rb.base, trace);
 
     if ((int)candidate.size() <= 1)
     {
         clearRobotPath(rb);
-        return {isAtBase(rb), isAtBase(rb)};
+        return {isAtBase(rb), isAtBase(rb), false};
     }
 
     if (isPathNearDynamicObstacle(candidate, 1, 1))
@@ -85,34 +150,52 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
     rb.path = candidate;
     rb.pathID = 1;
 
-    return {true, false};
+    return {true, false, false};
 }
 
 PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
 {
-    while (true)
-    {
-        Cell target = findNearestUncovered(rb.pos);
+    vector<CoverageCandidate> candidates =
+        collectReachableUncoveredCandidates(rb);
 
-        if (target == Cell{0, 0})
+    if (candidates.empty())
+    {
+        clearRobotPath(rb);
+        return {};
+    }
+
+    bool foundEnergyInfeasibleTarget = false;
+
+    for (const CoverageCandidate &candidate : candidates)
+    {
+        int costToBase =
+            estimateCostFromTargetToBase(candidate.target, rb);
+
+        if (!canVisitTargetAndReturn(
+                rb,
+                candidate.costFromRobot,
+                costToBase
+            ))
         {
-            clearRobotPath(rb);
-            return {};
+            foundEnergyInfeasibleTarget = true;
+            continue;
         }
 
-        rb.path = tracePath(rb.pos, target, trace);
+        dijkstra(rb.pos, d, trace);
+
+        rb.path = tracePath(rb.pos, candidate.target, trace);
 
         if (rb.path.empty())
         {
             clearRobotPath(rb);
-            return {};
+            continue;
         }
 
         if ((int)rb.path.size() <= 1)
         {
-            markCovered(target.r, target.c);
+            markCovered(candidate.target.r, candidate.target.c);
             clearRobotPath(rb);
-            continue;
+            return rebuildPathToNearestUncoveredTarget(rb);
         }
 
         rb.pathID = 1;
@@ -123,6 +206,14 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
             return {};
         }
 
-        return {true, false};
+        return {true, false, false};
     }
+
+    clearRobotPath(rb);
+
+    PathBuildResult result;
+    result.success = false;
+    result.alreadyAtGoal = false;
+    result.energyInfeasible = foundEnergyInfeasibleTarget;
+    return result;
 }

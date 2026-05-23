@@ -200,3 +200,39 @@ Final at base: yes
 Dynamic blocked cells: 0
 ===========================
 
+===== BENCHMARK STATS =====
+Map size: 20x20
+Total cells: 400
+Initial free cells: 163
+Obstacle cells: 237
+Obstacle density: 59.25 %
+Covered cells: 52
+Coverage rate: 31.90 %
+Total steps: 102
+Energy used: 102
+Remaining energy: 18
+Return count: 1
+Recharge count: 0
+Mission outcome: PARTIAL_RETURNED
+Final at base: yes
+Dynamic blocked cells: 0
+===========================
+
+===== BENCHMARK STATS =====
+Map size: 20x20
+Total cells: 400
+Initial free cells: 163
+Obstacle cells: 237
+Obstacle density: 59.25 %
+Covered cells: 163
+Coverage rate: 100.00 %
+Total steps: 288
+Energy used: 288
+Remaining energy: 132
+Return count: 1
+Recharge count: 0
+Mission outcome: SUCCESS
+Final at base: yes
+Dynamic blocked cells: 0
+===========================
+

@@ -13,6 +13,50 @@
 
 using namespace std;
 
+namespace
+{
+    void enterSafeTerminationReturn(
+        CoverageContext &ctx,
+        Robot &rb,
+        const char *message
+    ) {
+        ctx.holdCycleCount = 0;
+        ctx.holdTick = 0;
+        ctx.retryCount = 0;
+        ctx.alertFailCount = 0;
+        ctx.needWaitDraw = false;
+        ctx.actionCooldownTicks = 0;
+
+        if (isAtBase(rb))
+        {
+            cout << message << '\n';
+            clearRobotPath(rb);
+
+            ctx.returnToTerminate = true;
+            ctx.outcome = MISSION_PARTIAL_RETURNED;
+            ctx.shouldStop = true;
+            setHUDState("PARTIAL_RETURNED");
+            return;
+        }
+
+        enterReturnToBase(ctx, rb, message);
+        ctx.returnToTerminate = true;
+    }
+
+    void handleEnergyInfeasibleCoverageTarget(
+        Robot &rb,
+        CoverageContext &ctx
+    ) {
+        cout << "[ENERGY] Khong con uncovered target nao kha thi voi return margin hien tai.\n";
+
+        enterSafeTerminationReturn(
+            ctx,
+            rb,
+            "[RETURN] Coverage objective khong kha thi voi nang luong hien tai. Quay ve base de ket thuc an toan."
+        );
+    }
+}
+
 void printRetryMessage(const char *msg, int retryCount)
 {
     if (retryCount == 1 || retryCount % retryLogInterval() == 0)
@@ -105,6 +149,12 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (recovered.energyInfeasible)
+    {
+        handleEnergyInfeasibleCoverageTarget(rb, ctx);
+        return;
+    }
+
     if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
     {
         cout << "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle "
@@ -115,20 +165,11 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     {
         cout << "[RETURN] HOLD_SAFE qua lau, khong the tiep tuc coverage. Thu quay ve base.\n";
 
-        ctx.holdCycleCount = 0;
-        ctx.holdTick = 0;
-        ctx.retryCount = 0;
-        ctx.alertFailCount = 0;
-        ctx.needWaitDraw = false;
-        ctx.actionCooldownTicks = 0;
-
-        enterReturnToBase(
+        enterSafeTerminationReturn(
             ctx,
             rb,
             "[RETURN] Khong recover duoc coverage path. Quay ve base neu con kha nang."
         );
-
-        ctx.returnToTerminate = true;
         return;
     }
 
@@ -183,6 +224,12 @@ void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
 
     if (!built.success)
     {
+        if (built.energyInfeasible)
+        {
+            handleEnergyInfeasibleCoverageTarget(rb, ctx);
+            return;
+        }
+
         handleNoUsablePath(rb, ctx);
         return;
     }

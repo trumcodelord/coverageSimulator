@@ -2,22 +2,56 @@
 #include "grid.h"
 #include "dynamic_obstacle.h"
 
-#include <string>
-#include <vector>
 #include <cctype>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace std;
 
-static string normalizeLine(const string &raw)
+namespace
 {
-    string s;
-    for (char ch : raw)
+    constexpr int DEFAULT_MAX_ENERGY = 120;
+
+    int configuredEnergy = DEFAULT_MAX_ENERGY;
+
+    string normalizeLine(const string &raw)
     {
-        if (!isspace((unsigned char)ch))
-            s.push_back(ch);
+        string s;
+        for (char ch : raw)
+        {
+            if (!isspace((unsigned char)ch))
+                s.push_back(ch);
+        }
+        return s;
     }
-    return s;
+
+    bool isIntegerLine(const string &s)
+    {
+        if (s.empty())
+            return false;
+
+        int start = 0;
+
+        if (s[0] == '+' || s[0] == '-')
+            start = 1;
+
+        if (start >= (int)s.size())
+            return false;
+
+        for (int i = start; i < (int)s.size(); i++)
+        {
+            if (!isdigit((unsigned char)s[i]))
+                return false;
+        }
+
+        return true;
+    }
+}
+
+int configuredMaxEnergy()
+{
+    return configuredEnergy;
 }
 
 void readGrid(istream &in)
@@ -34,6 +68,27 @@ void readGrid(istream &in)
 
     if (lines.empty())
         throw runtime_error("Input map rong.");
+
+    configuredEnergy = DEFAULT_MAX_ENERGY;
+
+    if (isIntegerLine(lines[0]))
+    {
+        configuredEnergy = stoi(lines[0]);
+
+        if (configuredEnergy <= 0)
+            throw runtime_error("Dung luong pin phai la so nguyen duong.");
+
+        lines.erase(lines.begin());
+    }
+    else
+    {
+        throw runtime_error(
+            "Input thieu dong dung luong pin. Format moi: dong 1 la maxEnergy, sau do moi den ma tran map."
+        );
+    }
+
+    if (lines.empty())
+        throw runtime_error("Input map rong sau dong dung luong pin.");
 
     rows = (int)lines.size();
     cols = (int)lines[0].size();

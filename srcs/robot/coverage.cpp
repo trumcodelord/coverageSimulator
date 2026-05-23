@@ -5,6 +5,7 @@
 #include "coverage_tick.h"
 #include "coverage_timing.h"
 #include "dynamic_obstacle.h"
+#include "input.h"
 #include "opencv.h"
 #include "robot_lifecycle.h"
 
@@ -16,8 +17,6 @@ using namespace std;
 
 namespace
 {
-    constexpr int DEFAULT_MAX_ENERGY = 120;
-
     void renderFrame(const Robot &rb)
     {
         renderCoverageFrame(rb, true, renderDelayMs());
@@ -31,7 +30,7 @@ void executeCoverage(Robot &rb)
 
     {
         lock_guard<mutex> lock(simMutex);
-        initializeCoverageRobot(rb, DEFAULT_MAX_ENERGY);
+        initializeCoverageRobot(rb, configuredMaxEnergy());
     }
 
     initWindow();
