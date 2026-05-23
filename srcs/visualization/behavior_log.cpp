@@ -1,13 +1,5 @@
 #include "behavior_log.h"
 
-#include "hud_renderer.h"
-
-#include <iostream>
-
-using namespace std;
-
-void logBehavior(const string &message)
-{
-    cout << message << '\n';
-    pushHUDEvent(message);
-}
+// logBehavior is intentionally header-only.
+// Code::Blocks project files may not automatically pick up newly added .cpp files,
+// so keeping the implementation inline avoids a linker SPOF.
