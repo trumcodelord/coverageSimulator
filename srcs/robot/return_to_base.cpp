@@ -3,6 +3,7 @@
 #include "behavior_log.h"
 #include "coverage_timing.h"
 #include "energy_model.h"
+#include "grid.h"
 #include "mission_policy.h"
 #include "mission_state.h"
 #include "opencv.h"
@@ -12,6 +13,7 @@
 #include "robot_motion.h"
 #include "tactical_yield.h"
 
+#include <queue>
 #include <vector>
 
 using namespace std;
@@ -24,10 +26,63 @@ namespace
         return d[rb.base.r][rb.base.c];
     }
 
+    int estimateStaticCostToBase(const Robot &rb)
+    {
+        static int staticDist[1001][1001];
+
+        for (int i = 1; i <= rows; i++)
+        {
+            for (int j = 1; j <= cols; j++)
+                staticDist[i][j] = INF;
+        }
+
+        queue<Cell> q;
+        staticDist[rb.pos.r][rb.pos.c] = 0;
+        q.push(rb.pos);
+
+        while (!q.empty())
+        {
+            Cell u = q.front();
+            q.pop();
+
+            for (int k = 1; k <= 4; k++)
+            {
+                Cell v = {u.r + dr[k], u.c + dc[k]};
+
+                if (!inBounds(v.r, v.c))
+                    continue;
+
+                if (blocked[v.r][v.c])
+                    continue;
+
+                if (staticDist[v.r][v.c] <= staticDist[u.r][u.c] + 1)
+                    continue;
+
+                staticDist[v.r][v.c] = staticDist[u.r][u.c] + 1;
+                q.push(v);
+            }
+        }
+
+        return staticDist[rb.base.r][rb.base.c];
+    }
+
+    bool canReturnAfterDynamicObstacleClears(const Robot &rb)
+    {
+        int staticCostToBase = estimateStaticCostToBase(rb);
+
+        if (staticCostToBase >= INF)
+            return false;
+
+        // Returning with exactly zero energy at base is still a safe return.
+        // Waiting itself does not consume energy in this simulator, so a
+        // temporary dynamic block should not trigger POWER_SAVE while this is true.
+        return rb.energy >= staticCostToBase;
+    }
+
     bool isRobotCriticalEnergy(const Robot &rb)
     {
-        int costToBase = estimateCostToBase(rb);
-        return isCriticalEnergy(rb, costToBase);
+        int staticCostToBase = estimateStaticCostToBase(rb);
+        return isCriticalEnergy(rb, staticCostToBase);
     }
 
     bool tryTacticalYieldMove(Robot &rb, CoverageContext &ctx)
@@ -106,7 +161,7 @@ void waitReturnToBase(
     ctx.returnWaitCount++;
 
     if (ctx.returnWaitCount >= minReturnWaitBeforeYield() &&
-        !isRobotCriticalEnergy(rb))
+        canReturnAfterDynamicObstacleClears(rb))
     {
         if (tryTacticalYieldMove(rb, ctx))
         {
@@ -136,7 +191,8 @@ void waitReturnToBase(
         }
     }
 
-    if (isRobotCriticalEnergy(rb) &&
+    if (!canReturnAfterDynamicObstacleClears(rb) &&
+        isRobotCriticalEnergy(rb) &&
         ctx.returnWaitCount > maxReturnWaitWhenCritical())
     {
         if (ctx.coverageComplete)
@@ -144,7 +200,7 @@ void waitReturnToBase(
             enterPowerSaveForReturn(
                 ctx,
                 rb,
-                "[POWER_SAVE] Da phu xong nhung duong ve khong an toan va nang luong nguy cap."
+                "[POWER_SAVE] Da phu xong nhung robot khong con du nang luong de ve base."
             );
         }
         else
@@ -152,7 +208,7 @@ void waitReturnToBase(
             enterWaitForCommandFromReturn(
                 ctx,
                 rb,
-                "[COMMAND] Nang luong nguy cap va duong ve bi chan. Xin chi thi."
+                "[COMMAND] Khong du nang luong de ve base sau khi duong thong. Xin chi thi."
             );
         }
 
@@ -243,7 +299,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             waitReturnToBase(
                 ctx,
                 rb,
-                "[RETURN] Duong ve base tam thoi bi chan. Thu lai sau."
+                "[RETURN] Duong ve base tam thoi bi chan. Cho obstacle di qua roi thu lai."
             );
             return;
         }
@@ -254,7 +310,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         waitReturnToBase(
             ctx,
             rb,
-            "[RETURN] Active return path bi chan, cho/replan."
+            "[RETURN] Active return path bi chan, cho obstacle di qua."
         );
         return;
     }
@@ -291,5 +347,8 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
     }
 
     if (!ctx.shouldStop && !ctx.needWaitDraw && rb.steps > stepsBefore)
+    {
+        ctx.returnWaitCount = 0;
         setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
+    }
 }
