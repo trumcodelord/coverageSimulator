@@ -14,17 +14,22 @@ using namespace std;
 
 namespace
 {
-    void enterSafeTerminationReturn(
-        CoverageContext &ctx,
-        Robot &rb,
-        const char *message
-    ) {
+    void resetRecoveryCounters(CoverageContext &ctx)
+    {
         ctx.holdCycleCount = 0;
         ctx.holdTick = 0;
         ctx.retryCount = 0;
         ctx.alertFailCount = 0;
         ctx.needWaitDraw = false;
         ctx.actionCooldownTicks = 0;
+    }
+
+    void enterSafeTerminationReturn(
+        CoverageContext &ctx,
+        Robot &rb,
+        const char *message
+    ) {
+        resetRecoveryCounters(ctx);
 
         if (isAtBase(rb))
         {
@@ -42,16 +47,38 @@ namespace
         ctx.returnToTerminate = true;
     }
 
+    void handleCurrentEnergyLowForCoverage(
+        Robot &rb,
+        CoverageContext &ctx
+    ) {
+        resetRecoveryCounters(ctx);
+
+        if (isAtBase(rb))
+        {
+            logBehavior("[ENERGY] Nang luong hien tai khong du de tiep tuc coverage. Sac lai pin.");
+            clearRobotPath(rb);
+            switchMissionMode(ctx, RECHARGING);
+            setCoverageCooldown(ctx, rechargeWaitTicks());
+            return;
+        }
+
+        enterReturnToBase(
+            ctx,
+            rb,
+            "[ENERGY] Nang luong hien tai khong du cho target tiep theo. Quay ve base de sac."
+        );
+    }
+
     void handleEnergyInfeasibleCoverageTarget(
         Robot &rb,
         CoverageContext &ctx
     ) {
-        logBehavior("[ENERGY] Khong con uncovered target nao kha thi voi return margin hien tai.");
+        logBehavior("[ENERGY] Ngay ca khi sac day, khong con uncovered target nao kha thi voi return margin hien tai.");
 
         enterSafeTerminationReturn(
             ctx,
             rb,
-            "[RETURN] Coverage objective khong kha thi voi nang luong hien tai. Quay ve base de ket thuc an toan."
+            "[RETURN] Coverage objective khong kha thi voi dung luong pin hien tai. Quay ve base de ket thuc an toan."
         );
     }
 }
@@ -151,6 +178,12 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (recovered.currentEnergyLow)
+    {
+        handleCurrentEnergyLowForCoverage(rb, ctx);
+        return;
+    }
+
     if (recovered.energyInfeasible)
     {
         handleEnergyInfeasibleCoverageTarget(rb, ctx);
@@ -229,6 +262,12 @@ void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
 
     if (!built.success)
     {
+        if (built.currentEnergyLow)
+        {
+            handleCurrentEnergyLowForCoverage(rb, ctx);
+            return;
+        }
+
         if (built.energyInfeasible)
         {
             handleEnergyInfeasibleCoverageTarget(rb, ctx);
