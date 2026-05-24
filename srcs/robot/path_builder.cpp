@@ -65,6 +65,21 @@ namespace
         dijkstra(target, d, trace);
         return d[rb.base.r][rb.base.c];
     }
+
+    bool canFullBatteryVisitTargetAndReturn(
+        const Robot &rb,
+        int costToTarget,
+        int costTargetToBase
+    ) {
+        Robot fullBatteryRobot = rb;
+        fullBatteryRobot.energy = fullBatteryRobot.maxEnergy;
+
+        return canVisitTargetAndReturn(
+            fullBatteryRobot,
+            costToTarget,
+            costTargetToBase
+        );
+    }
 }
 
 void clearRobotPath(Robot &rb)
@@ -106,7 +121,7 @@ PathBuildResult rebuildPathToBase(Robot &rb)
     if ((int)rb.path.size() <= 1)
     {
         clearRobotPath(rb);
-        return {isAtBase(rb), isAtBase(rb), false};
+        return {isAtBase(rb), isAtBase(rb), false, false};
     }
 
     rb.pathID = 1;
@@ -117,7 +132,7 @@ PathBuildResult rebuildPathToBase(Robot &rb)
         return {};
     }
 
-    return {true, false, false};
+    return {true, false, false, false};
 }
 
 PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
@@ -138,7 +153,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
     if ((int)candidate.size() <= 1)
     {
         clearRobotPath(rb);
-        return {isAtBase(rb), isAtBase(rb), false};
+        return {isAtBase(rb), isAtBase(rb), false, false};
     }
 
     if (isPathNearDynamicObstacle(candidate, 1, 1))
@@ -150,7 +165,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
     rb.path = candidate;
     rb.pathID = 1;
 
-    return {true, false, false};
+    return {true, false, false, false};
 }
 
 PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
@@ -164,12 +179,23 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
         return {};
     }
 
-    bool foundEnergyInfeasibleTarget = false;
+    bool foundCurrentEnergyLowTarget = false;
+    bool foundMaxEnergyInfeasibleTarget = false;
 
     for (const CoverageCandidate &candidate : candidates)
     {
         int costToBase =
             estimateCostFromTargetToBase(candidate.target, rb);
+
+        if (!canFullBatteryVisitTargetAndReturn(
+                rb,
+                candidate.costFromRobot,
+                costToBase
+            ))
+        {
+            foundMaxEnergyInfeasibleTarget = true;
+            continue;
+        }
 
         if (!canVisitTargetAndReturn(
                 rb,
@@ -177,7 +203,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
                 costToBase
             ))
         {
-            foundEnergyInfeasibleTarget = true;
+            foundCurrentEnergyLowTarget = true;
             continue;
         }
 
@@ -206,7 +232,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
             return {};
         }
 
-        return {true, false, false};
+        return {true, false, false, false};
     }
 
     clearRobotPath(rb);
@@ -214,6 +240,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
     PathBuildResult result;
     result.success = false;
     result.alreadyAtGoal = false;
-    result.energyInfeasible = foundEnergyInfeasibleTarget;
+    result.currentEnergyLow = foundCurrentEnergyLowTarget;
+    result.energyInfeasible = !foundCurrentEnergyLowTarget && foundMaxEnergyInfeasibleTarget;
     return result;
 }
