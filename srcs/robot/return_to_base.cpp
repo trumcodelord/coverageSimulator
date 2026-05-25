@@ -73,9 +73,6 @@ namespace
         if (staticCostToBase >= INF)
             return false;
 
-        // Returning with exactly zero energy at base is still a safe return.
-        // Waiting itself does not consume energy in this simulator, so a
-        // temporary dynamic block should not trigger POWER_SAVE while this is true.
         return rb.energy >= staticCostToBase;
     }
 
@@ -154,6 +151,9 @@ void waitReturnToBase(
     Robot &rb,
     const char *message
 ) {
+    switchMissionMode(ctx, RETURN_TO_BASE);
+    setHUDState("RETURN_WAIT");
+
     logBehavior(message);
 
     clearRobotPath(rb);
@@ -166,6 +166,8 @@ void waitReturnToBase(
         if (tryTacticalYieldMove(rb, ctx))
         {
             logBehavior("[YIELD] Robot tam lui de giai phong diem nghen.");
+
+            switchMissionMode(ctx, RETURN_TO_BASE);
 
             ctx.needWaitDraw = false;
             ctx.returnWaitCount = 0;
@@ -184,6 +186,8 @@ void waitReturnToBase(
 
         if (detour.success)
         {
+            switchMissionMode(ctx, RETURN_TO_BASE);
+
             ctx.needWaitDraw = false;
             ctx.returnWaitCount = 0;
             setHUDState("RETURN_DETOUR");
@@ -215,7 +219,6 @@ void waitReturnToBase(
         return;
     }
 
-    setHUDState("RETURN_WAIT");
     setCoverageCooldown(ctx, blockedWaitTicks());
 }
 
@@ -225,7 +228,10 @@ void enterReturnToBase(
     const char *message
 ) {
     if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
+    {
+        setHUDState("RETURN_TO_BASE");
         return;
+    }
 
     logBehavior(message);
 
@@ -235,6 +241,7 @@ void enterReturnToBase(
 
     clearRobotPath(rb);
     switchMissionMode(ctx, RETURN_TO_BASE);
+    setHUDState("RETURN_TO_BASE");
 
     PathBuildResult path = rebuildPathToBase(rb);
 
@@ -250,6 +257,7 @@ void enterReturnToBase(
 
 void handleReturnToBase(Robot &rb, CoverageContext &ctx)
 {
+    switchMissionMode(ctx, RETURN_TO_BASE);
     setHUDState("RETURN_TO_BASE");
 
     if (isAtBase(rb))
