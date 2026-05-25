@@ -1,3 +1,4 @@
+#include "behavior_log.h"
 #include "coverage.h"
 #include "environment.h"
 #include "input.h"
@@ -79,6 +80,8 @@ int main()
         return 1;
     }
 
+    initBehaviorLog(mapName);
+
     try
     {
         readGrid(fin);
@@ -86,11 +89,14 @@ int main()
     catch (const exception &e)
     {
         cerr << "Loi doc input: " << e.what() << '\n';
+        closeBehaviorLog();
         return 1;
     }
 
     Robot rb;
     rb.pos = start;
+
+    logBehavior("[SYSTEM] Start simulation map=" + mapName);
 
     initEnvironment();
 
@@ -118,6 +124,19 @@ int main()
         mapName,
         screenshotPath
     );
+
+    logBehavior(
+        "[OUTCOME][MISSION] outcome=" + outcome +
+        " coverage=" + to_string(s.coverageRate) +
+        " steps=" + to_string(s.steps) +
+        " returns=" + to_string(s.returnCount) +
+        " recharges=" + to_string(s.rechargeCount) +
+        " screenshot=" + screenshotPath
+    );
+
+    logBehavior("[SYSTEM] Behavior log saved to " + behaviorLogPath());
+
+    closeBehaviorLog();
 
     return 0;
 }
