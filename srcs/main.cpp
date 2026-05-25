@@ -128,7 +128,7 @@ int main()
     logBehavior(
         "[OUTCOME][MISSION] outcome=" + outcome +
         " coverage=" + to_string(s.coverageRate) +
-        " steps=" + to_string(s.steps) +
+        " steps=" + to_string(s.totalSteps) +
         " returns=" + to_string(s.returnCount) +
         " recharges=" + to_string(s.rechargeCount) +
         " screenshot=" + screenshotPath
