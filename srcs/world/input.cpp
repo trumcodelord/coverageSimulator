@@ -108,6 +108,7 @@ void readGrid(istream &in)
             blocked[i][j] = false;
             dynamicBlocked[i][j] = false;
             covered[i][j] = false;
+            terrainCost[i][j] = 1;
         }
 
     bool foundRobot = false;
