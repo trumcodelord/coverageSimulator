@@ -3,6 +3,7 @@
 #include "dynamic_obstacle.h"
 #include "grid.h"
 #include "image_utils.h"
+#include "robot_motion.h"
 #include "visual_assets.h"
 #include "visual_layout.h"
 
