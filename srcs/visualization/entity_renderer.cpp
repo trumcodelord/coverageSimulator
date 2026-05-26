@@ -15,12 +15,13 @@ using namespace cv;
 
 namespace
 {
-    constexpr int ROBOT_VISUAL_MOVE_FRAMES = 15;
+    constexpr int ROBOT_DEFAULT_MOVE_FRAMES = 16;
+    constexpr int ROBOT_MIN_MOVE_FRAMES = 1;
+    constexpr int ROBOT_MAX_MOVE_FRAMES = 24;
 
     struct RobotVisualState
     {
         bool initialized = false;
-        Cell lastLogicalPos = {0, 0};
         Cell targetLogicalPos = {0, 0};
         float x = 0.0f;
         float y = 0.0f;
@@ -30,12 +31,24 @@ namespace
         float toY = 0.0f;
         int frame = 0;
         int totalFrames = 1;
+        int framesSinceLastMove = ROBOT_DEFAULT_MOVE_FRAMES;
     };
 
     RobotVisualState &robotVisualState()
     {
         static RobotVisualState state;
         return state;
+    }
+
+    int clampMoveFrames(int frames)
+    {
+        return max(ROBOT_MIN_MOVE_FRAMES, min(ROBOT_MAX_MOVE_FRAMES, frames));
+    }
+
+    bool isRobotAnimating()
+    {
+        const RobotVisualState &state = robotVisualState();
+        return state.initialized && state.frame < state.totalFrames;
     }
 
     Scalar getTrailColor(int cnt)
@@ -89,19 +102,49 @@ namespace
         return {rb.pos.r - 1, rb.pos.c};
     }
 
-    double robotRotationAngleDeg(const Robot &rb)
+    bool robotHeadingDelta(const Robot &rb, float &dr, float &dc)
     {
+        const RobotVisualState &state = robotVisualState();
+
+        if (isRobotAnimating())
+        {
+            dr = state.toX - state.fromX;
+            dc = state.toY - state.fromY;
+
+            if (fabs(dr) > 1e-5f || fabs(dc) > 1e-5f)
+                return true;
+        }
+
         Cell next = robotHeadingTarget(rb);
+        dr = (float)(next.r - rb.pos.r);
+        dc = (float)(next.c - rb.pos.c);
 
-        int dx = next.c - rb.pos.c;
-        int dy = next.r - rb.pos.r;
+        return fabs(dr) > 1e-5f || fabs(dc) > 1e-5f;
+    }
 
-        if (dx == 1) return -90.0;
-        if (dx == -1) return 90.0;
-        if (dy == 1) return 180.0;
-        if (dy == -1) return 0.0;
+    double angleFromGridDelta(float dr, float dc)
+    {
+        if (fabs(dc) >= fabs(dr))
+        {
+            if (dc > 0.0f) return -90.0;
+            if (dc < 0.0f) return 90.0;
+        }
+
+        if (dr > 0.0f) return 180.0;
+        if (dr < 0.0f) return 0.0;
 
         return 0.0;
+    }
+
+    double robotRotationAngleDeg(const Robot &rb)
+    {
+        float dr = 0.0f;
+        float dc = 0.0f;
+
+        if (!robotHeadingDelta(rb, dr, dc))
+            return 0.0;
+
+        return angleFromGridDelta(dr, dc);
     }
 
     Point visualRobotCenter(const Robot &rb)
@@ -111,7 +154,6 @@ namespace
         if (!state.initialized)
         {
             state.initialized = true;
-            state.lastLogicalPos = rb.pos;
             state.targetLogicalPos = rb.pos;
             state.x = (float)rb.pos.r;
             state.y = (float)rb.pos.c;
@@ -119,27 +161,30 @@ namespace
             state.fromY = state.y;
             state.toX = state.x;
             state.toY = state.y;
-            state.frame = ROBOT_VISUAL_MOVE_FRAMES;
-            state.totalFrames = ROBOT_VISUAL_MOVE_FRAMES;
+            state.frame = ROBOT_DEFAULT_MOVE_FRAMES;
+            state.totalFrames = ROBOT_DEFAULT_MOVE_FRAMES;
+            state.framesSinceLastMove = ROBOT_DEFAULT_MOVE_FRAMES;
         }
 
         if (!(rb.pos == state.targetLogicalPos))
         {
-            state.lastLogicalPos = state.targetLogicalPos;
+            int observedFrames = clampMoveFrames(state.framesSinceLastMove);
+
             state.targetLogicalPos = rb.pos;
             state.fromX = state.x;
             state.fromY = state.y;
             state.toX = (float)rb.pos.r;
             state.toY = (float)rb.pos.c;
             state.frame = 0;
-            state.totalFrames = ROBOT_VISUAL_MOVE_FRAMES;
+            state.totalFrames = observedFrames;
+            state.framesSinceLastMove = 0;
         }
 
         if (state.frame < state.totalFrames)
         {
             state.frame++;
             float t = (float)state.frame / (float)state.totalFrames;
-            t = std::max(0.0f, std::min(1.0f, t));
+            t = max(0.0f, min(1.0f, t));
             float smooth = t * t * (3.0f - 2.0f * t);
 
             state.x = state.fromX + (state.toX - state.fromX) * smooth;
@@ -151,13 +196,13 @@ namespace
             state.y = (float)rb.pos.c;
         }
 
+        state.framesSinceLastMove = clampMoveFrames(state.framesSinceLastMove + 1);
+
         return visualWorldCenter(state.x, state.y);
     }
 
-    void paintRobotFallback(Mat &canvas, const Robot &rb)
+    void paintRobotFallback(Mat &canvas, const Robot &rb, Point center)
     {
-        Point center = visualRobotCenter(rb);
-
         int cellSize = visualCellSize();
         int radius = max(4, cellSize / 5);
         int coreRadius = max(2, cellSize / 18);
@@ -167,19 +212,25 @@ namespace
         circle(canvas, center, radius, Scalar(30, 60, 90), 2);
         circle(canvas, center, coreRadius, Scalar(255, 255, 255), FILLED);
 
-        Cell next = robotHeadingTarget(rb);
+        float dr = 0.0f;
+        float dc = 0.0f;
 
-        int dx = next.c - rb.pos.c;
-        int dy = next.r - rb.pos.r;
+        if (!robotHeadingDelta(rb, dr, dc))
+            return;
 
         int arrowLen = radius + max(6, cellSize / 4);
         Point nose = center;
 
-        if (dx == 1) nose.x += arrowLen;
-        else if (dx == -1) nose.x -= arrowLen;
-        else if (dy == 1) nose.y += arrowLen;
-        else if (dy == -1) nose.y -= arrowLen;
-        else return;
+        if (fabs(dc) >= fabs(dr))
+        {
+            if (dc > 0.0f) nose.x += arrowLen;
+            else if (dc < 0.0f) nose.x -= arrowLen;
+        }
+        else
+        {
+            if (dr > 0.0f) nose.y += arrowLen;
+            else if (dr < 0.0f) nose.y -= arrowLen;
+        }
 
         arrowedLine(
             canvas,
@@ -263,7 +314,7 @@ void paintRobot(Mat &canvas, const Robot &rb)
         return;
     }
 
-    paintRobotFallback(canvas, rb);
+    paintRobotFallback(canvas, rb, center);
 }
 
 void paintPath(Mat &canvas, const Robot &rb)
