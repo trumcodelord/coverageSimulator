@@ -1,5 +1,6 @@
 #include "behavior_log.h"
 #include "coverage.h"
+#include "coverage_context.h"
 #include "environment.h"
 #include "input.h"
 #include "opencv.h"
@@ -113,7 +114,8 @@ int main()
     string screenshotPath =
         "results/screenshots/" + safeMapName + "_" + outcome + ".png";
 
-    drawFrame(rb, true, 0);
+    CoverageContext finalCtx;
+    drawFrame(rb, finalCtx, true, 0);
     saveCurrentFrame(screenshotPath);
 
     printStats(s);
