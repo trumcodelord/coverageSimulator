@@ -2,6 +2,7 @@
 #include "coverage.h"
 #include "coverage_context.h"
 #include "environment.h"
+#include "grid.h"
 #include "input.h"
 #include "opencv.h"
 #include "stats.h"
@@ -97,7 +98,27 @@ int main()
     Robot rb;
     rb.pos = start;
 
-    logBehavior("[SYSTEM] Start simulation map=" + mapName);
+    logReadableEvent(
+        "INFO",
+        "RUN",
+        "start",
+        "Bắt đầu chạy simulator trên map đã chọn.",
+        "map=" + mapName +
+        " input=" + filename
+    );
+
+    logReadableEvent(
+        "INFO",
+        "MAP",
+        "problem",
+        "Bài toán đã được nạp: robot cần phủ các ô đi được và tránh vật cản.",
+        "rows=" + to_string(rows) +
+        " cols=" + to_string(cols) +
+        " free_cells=" + to_string(initialFreeCells) +
+        " wall_cells=" + to_string(rows * cols - initialFreeCells) +
+        " start=" + cellText(start) +
+        " max_energy=" + to_string(configuredMaxEnergy())
+    );
 
     initEnvironment();
 
@@ -127,12 +148,19 @@ int main()
         screenshotPath
     );
 
-    logBehavior(
-        "[OUTCOME][MISSION] outcome=" + outcome +
+    logReadableEvent(
+        s.missionOutcome == MISSION_SUCCESS ? "INFO" : "WARN",
+        "MISSION",
+        "outcome",
+        s.missionOutcome == MISSION_SUCCESS
+            ? "Robot kết thúc nhiệm vụ thành công."
+            : "Robot kết thúc nhiệm vụ nhưng cần kiểm tra lý do trong các dòng trước đó.",
+        "outcome=" + outcome +
         " coverage=" + to_string(s.coverageRate) +
         " steps=" + to_string(s.totalSteps) +
         " returns=" + to_string(s.returnCount) +
         " recharges=" + to_string(s.rechargeCount) +
+        " final_at_base=" + boolText(s.finalAtBase) +
         " screenshot=" + screenshotPath
     );
 
