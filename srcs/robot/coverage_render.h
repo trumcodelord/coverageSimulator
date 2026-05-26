@@ -2,4 +2,4 @@
 
 #include "types.h"
 
-void renderCoverageFrame(const Robot &rb, bool showPath, int delay);
+void renderCoverageFrame(const Robot &rb, bool showPath, int delay, RobotMode mode = NORMAL);
