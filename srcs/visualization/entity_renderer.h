@@ -10,6 +10,8 @@ void paintRobot(cv::Mat &canvas, const Robot &rb, RobotMode mode);
 
 void paintPath(cv::Mat &canvas, const Robot &rb);
 
+void paintVisualCoverage(cv::Mat &canvas);
+
 void paintTrail(cv::Mat &canvas, const Robot &rb);
 
 void paintDynamicObstacles(cv::Mat &canvas);
