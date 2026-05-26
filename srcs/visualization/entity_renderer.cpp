@@ -269,7 +269,12 @@ void paintTrail(Mat &canvas, const Robot &rb)
     if (rb.trail.size() < 2)
         return;
 
-    for (int i = 1; i < (int)rb.trail.size(); i++)
+    int trailThickness = max(1, visualCellSize() / 18);
+    double tipLength = 0.18;
+
+    // Draw newest trail segments first and older segments last.
+    // This keeps earlier arrows visible when a later revisit overlaps them.
+    for (int i = (int)rb.trail.size() - 1; i >= 1; i--)
     {
         Cell a = rb.trail[i - 1];
         Cell b = rb.trail[i];
@@ -286,17 +291,16 @@ void paintTrail(Mat &canvas, const Robot &rb)
             cnt = it->second;
 
         Scalar color = getTrailColor(cnt);
-        int thickness = 3;
 
         arrowedLine(
             canvas,
             p1,
             p2,
             Scalar(80, 80, 80),
-            thickness + 2,
+            trailThickness + 1,
             LINE_AA,
             0,
-            0.1
+            tipLength
         );
 
         arrowedLine(
@@ -304,10 +308,10 @@ void paintTrail(Mat &canvas, const Robot &rb)
             p1,
             p2,
             color,
-            thickness,
+            trailThickness,
             LINE_AA,
             0,
-            0.1
+            tipLength
         );
     }
 }

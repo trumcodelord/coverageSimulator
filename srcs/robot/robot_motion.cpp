@@ -57,7 +57,7 @@ namespace
                 "ERROR",
                 "MOVE",
                 "commit_power_loss",
-                "Robot đã tới ô mới nhưng hết pin ngay sau bước này.",
+                "Robot reached the new cell but lost power after this step.",
                 rb,
                 ctx.mode,
                 "from=" + cellText(prev) +
@@ -79,7 +79,7 @@ namespace
             "INFO",
             "MOVE",
             "commit",
-            "Robot đã tới tâm ô mới, lúc này mới tính là đã đi xong.",
+            "Robot reached the center of the new cell; the step is committed now.",
             rb,
             ctx.mode,
             "from=" + cellText(prev) +
@@ -174,7 +174,7 @@ RobotMoveResult moveRobotAlongCurrentPath(
         "INFO",
         "MOVE",
         "start",
-        "Robot bắt đầu đi sang ô kế tiếp, nhưng chưa tính là đã tới ô mới.",
+        "Robot starts moving to the next cell; the step is not committed yet.",
         rb,
         ctx.mode,
         "from=" + cellText(prev) +

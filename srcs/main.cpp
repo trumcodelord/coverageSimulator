@@ -102,7 +102,7 @@ int main()
         "INFO",
         "RUN",
         "start",
-        "Bắt đầu chạy simulator trên map đã chọn.",
+        "Start simulation on selected map.",
         "map=" + mapName +
         " input=" + filename
     );
@@ -111,7 +111,7 @@ int main()
         "INFO",
         "MAP",
         "problem",
-        "Bài toán đã được nạp: robot cần phủ các ô đi được và tránh vật cản.",
+        "Problem loaded: robot must cover free cells and avoid obstacles.",
         "rows=" + to_string(rows) +
         " cols=" + to_string(cols) +
         " free_cells=" + to_string(initialFreeCells) +
@@ -153,8 +153,8 @@ int main()
         "MISSION",
         "outcome",
         s.missionOutcome == MISSION_SUCCESS
-            ? "Robot kết thúc nhiệm vụ thành công."
-            : "Robot kết thúc nhiệm vụ nhưng cần kiểm tra lý do trong các dòng trước đó.",
+            ? "Mission finished successfully."
+            : "Mission finished with a non-success outcome; check previous events for the reason.",
         "outcome=" + outcome +
         " coverage=" + to_string(s.coverageRate) +
         " steps=" + to_string(s.totalSteps) +

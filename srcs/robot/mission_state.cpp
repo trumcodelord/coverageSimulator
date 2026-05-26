@@ -20,11 +20,12 @@ void switchMissionMode(CoverageContext &ctx, RobotMode next)
         "INFO",
         "MODE",
         "transition",
-        "Robot đổi trạng thái nhiệm vụ.",
+        "Robot changes mission mode.",
         "from=" + string(modeName(prev)) +
         " to=" + string(modeName(next))
     );
 
+    logHUDOnly("Mode changed: " + string(modeName(next)));
     setHUDState(name);
 }
 
