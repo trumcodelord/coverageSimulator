@@ -11,11 +11,20 @@ void switchMissionMode(CoverageContext &ctx, RobotMode next)
     if (ctx.mode == next)
         return;
 
+    RobotMode prev = ctx.mode;
     ctx.mode = next;
 
     string name = modeName(next);
 
-    logBehavior("[MODE] -> " + name);
+    logReadableEvent(
+        "INFO",
+        "MODE",
+        "transition",
+        "Robot đổi trạng thái nhiệm vụ.",
+        "from=" + string(modeName(prev)) +
+        " to=" + string(modeName(next))
+    );
+
     setHUDState(name);
 }
 
