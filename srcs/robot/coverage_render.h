@@ -1,5 +1,6 @@
 #pragma once
 
+#include "coverage_context.h"
 #include "types.h"
 
-void renderCoverageFrame(const Robot &rb, bool showPath, int delay, RobotMode mode = NORMAL);
+void renderCoverageFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int delay);
