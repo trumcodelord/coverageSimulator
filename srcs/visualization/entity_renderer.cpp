@@ -8,12 +8,36 @@
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 using namespace std;
 using namespace cv;
 
 namespace
 {
+    constexpr int ROBOT_VISUAL_MOVE_FRAMES = 15;
+
+    struct RobotVisualState
+    {
+        bool initialized = false;
+        Cell lastLogicalPos = {0, 0};
+        Cell targetLogicalPos = {0, 0};
+        float x = 0.0f;
+        float y = 0.0f;
+        float fromX = 0.0f;
+        float fromY = 0.0f;
+        float toX = 0.0f;
+        float toY = 0.0f;
+        int frame = 0;
+        int totalFrames = 1;
+    };
+
+    RobotVisualState &robotVisualState()
+    {
+        static RobotVisualState state;
+        return state;
+    }
+
     Scalar getTrailColor(int cnt)
     {
         if (cnt <= 1)
@@ -39,10 +63,10 @@ namespace
 
     double vehicleRotationAngleDeg(const DynamicObstacle &obs)
     {
-        if (obs.dir == 0) return 180.0;   // down
-        if (obs.dir == 1) return -90.0;   // right
-        if (obs.dir == 2) return 0.0;     // up
-        if (obs.dir == 3) return 90.0;    // left
+        if (obs.dir == 0) return 180.0;
+        if (obs.dir == 1) return -90.0;
+        if (obs.dir == 2) return 0.0;
+        if (obs.dir == 3) return 90.0;
 
         return 0.0;
     }
@@ -72,17 +96,67 @@ namespace
         int dx = next.c - rb.pos.c;
         int dy = next.r - rb.pos.r;
 
-        if (dx == 1) return -90.0;   // right
-        if (dx == -1) return 90.0;   // left
-        if (dy == 1) return 180.0;   // down
-        if (dy == -1) return 0.0;    // up
+        if (dx == 1) return -90.0;
+        if (dx == -1) return 90.0;
+        if (dy == 1) return 180.0;
+        if (dy == -1) return 0.0;
 
         return 0.0;
     }
 
+    Point visualRobotCenter(const Robot &rb)
+    {
+        RobotVisualState &state = robotVisualState();
+
+        if (!state.initialized)
+        {
+            state.initialized = true;
+            state.lastLogicalPos = rb.pos;
+            state.targetLogicalPos = rb.pos;
+            state.x = (float)rb.pos.r;
+            state.y = (float)rb.pos.c;
+            state.fromX = state.x;
+            state.fromY = state.y;
+            state.toX = state.x;
+            state.toY = state.y;
+            state.frame = ROBOT_VISUAL_MOVE_FRAMES;
+            state.totalFrames = ROBOT_VISUAL_MOVE_FRAMES;
+        }
+
+        if (!(rb.pos == state.targetLogicalPos))
+        {
+            state.lastLogicalPos = state.targetLogicalPos;
+            state.targetLogicalPos = rb.pos;
+            state.fromX = state.x;
+            state.fromY = state.y;
+            state.toX = (float)rb.pos.r;
+            state.toY = (float)rb.pos.c;
+            state.frame = 0;
+            state.totalFrames = ROBOT_VISUAL_MOVE_FRAMES;
+        }
+
+        if (state.frame < state.totalFrames)
+        {
+            state.frame++;
+            float t = (float)state.frame / (float)state.totalFrames;
+            t = std::max(0.0f, std::min(1.0f, t));
+            float smooth = t * t * (3.0f - 2.0f * t);
+
+            state.x = state.fromX + (state.toX - state.fromX) * smooth;
+            state.y = state.fromY + (state.toY - state.fromY) * smooth;
+        }
+        else
+        {
+            state.x = (float)rb.pos.r;
+            state.y = (float)rb.pos.c;
+        }
+
+        return visualWorldCenter(state.x, state.y);
+    }
+
     void paintRobotFallback(Mat &canvas, const Robot &rb)
     {
-        Point center = visualCellCenter(rb.pos.r, rb.pos.c);
+        Point center = visualRobotCenter(rb);
 
         int cellSize = visualCellSize();
         int radius = max(4, cellSize / 5);
@@ -174,7 +248,7 @@ void paintBase(Mat &canvas, const Robot &rb)
 
 void paintRobot(Mat &canvas, const Robot &rb)
 {
-    Point center = visualCellCenter(rb.pos.r, rb.pos.c);
+    Point center = visualRobotCenter(rb);
     int size = max(18, (int)(visualCellSize() * 0.90));
 
     if (!robotIcon().empty())
