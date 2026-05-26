@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hud_renderer.h"
+#include "types.h"
 
 #include <filesystem>
 #include <fstream>
@@ -79,6 +80,53 @@ inline std::string cellText(Cell p)
 inline std::string energyText(const Robot &rb)
 {
     return std::to_string(rb.energy) + "/" + std::to_string(rb.maxEnergy);
+}
+
+inline std::string boolText(bool value)
+{
+    return value ? "true" : "false";
+}
+
+inline void logReadableEvent(
+    const std::string &level,
+    const std::string &domain,
+    const std::string &event,
+    const std::string &sentence,
+    const std::string &details = ""
+) {
+    std::string message =
+        "[" + level + "][" + domain + "] " +
+        sentence +
+        " event=" + event;
+
+    if (!details.empty())
+        message += " " + details;
+
+    logBehavior(message);
+}
+
+inline void logRobotEvent(
+    const std::string &level,
+    const std::string &domain,
+    const std::string &event,
+    const std::string &sentence,
+    const Robot &rb,
+    RobotMode mode,
+    const std::string &details = ""
+) {
+    std::string message =
+        "[" + level + "][" + domain + "] " +
+        sentence +
+        " event=" + event +
+        " step=" + std::to_string(rb.steps) +
+        " mode=" + modeName(mode) +
+        " pos=" + cellText(rb.pos) +
+        " energy=" + energyText(rb);
+
+    if (!details.empty())
+        message += " " + details;
+
+    logBehavior(message);
 }
 
 inline void logEvent(
