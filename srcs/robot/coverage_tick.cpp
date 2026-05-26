@@ -134,6 +134,13 @@ namespace
             !ctx.needWaitDraw &&
             rb.steps > stepsBefore)
         {
+            if (ctx.mode != FINAL_PUSH && shouldRobotReturnForEnergy(rb))
+            {
+                enterReturnToBase(ctx, rb);
+                setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
+                return;
+            }
+
             setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
         }
     }
