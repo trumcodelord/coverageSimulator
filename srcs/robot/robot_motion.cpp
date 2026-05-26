@@ -1,5 +1,6 @@
 #include "robot_motion.h"
 
+#include "behavior_log.h"
 #include "coverage_timing.h"
 #include "dynamic_obstacle.h"
 #include "energy_model.h"
@@ -7,6 +8,18 @@
 
 namespace
 {
+    int countCoveredCells()
+    {
+        int count = 0;
+
+        for (int r = 1; r <= rows; r++)
+            for (int c = 1; c <= cols; c++)
+                if (covered[r][c])
+                    count++;
+
+        return count;
+    }
+
     RobotMoveResult commitPendingMove(
         Robot &rb,
         CoverageContext &ctx
@@ -40,11 +53,42 @@ namespace
 
         if (result.powerLoss)
         {
+            logRobotEvent(
+                "ERROR",
+                "MOVE",
+                "commit_power_loss",
+                "Robot đã tới ô mới nhưng hết pin ngay sau bước này.",
+                rb,
+                ctx.mode,
+                "from=" + cellText(prev) +
+                " to=" + cellText(next) +
+                " move_cost=" + std::to_string(move.energyCost)
+            );
+
             ctx.shouldStop = true;
             return result;
         }
 
         markCovered(rb.pos.r, rb.pos.c);
+
+        int coveredCount = countCoveredCells();
+        int rewardNewCell = move.enteredUncoveredCell ? 1 : 0;
+        int penaltyRevisit = move.enteredUncoveredCell ? 0 : 1;
+
+        logRobotEvent(
+            "INFO",
+            "MOVE",
+            "commit",
+            "Robot đã tới tâm ô mới, lúc này mới tính là đã đi xong.",
+            rb,
+            ctx.mode,
+            "from=" + cellText(prev) +
+            " to=" + cellText(next) +
+            " move_cost=" + std::to_string(move.energyCost) +
+            " covered=" + std::to_string(coveredCount) + "/" + std::to_string(initialFreeCells) +
+            " reward_new_cell=" + std::to_string(rewardNewCell) +
+            " penalty_revisit=" + std::to_string(penaltyRevisit)
+        );
 
         return result;
     }
@@ -125,6 +169,20 @@ RobotMoveResult moveRobotAlongCurrentPath(
     ctx.pendingMove.elapsedTicks = 0;
     ctx.pendingMove.totalTicks = stepTicksForMode(ctx.mode);
     ctx.pendingMove.enteredUncoveredCell = result.enteredUncoveredCell;
+
+    logRobotEvent(
+        "INFO",
+        "MOVE",
+        "start",
+        "Robot bắt đầu đi sang ô kế tiếp, nhưng chưa tính là đã tới ô mới.",
+        rb,
+        ctx.mode,
+        "from=" + cellText(prev) +
+        " to=" + cellText(next) +
+        " energy_before=" + energyText(rb) +
+        " move_cost=" + std::to_string(energyCost) +
+        " total_ticks=" + std::to_string(ctx.pendingMove.totalTicks)
+    );
 
     return result;
 }
