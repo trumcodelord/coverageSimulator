@@ -1,0 +1,14 @@
+file,energy,rows,cols,free_cells,wall_cells,free_pct,components,reachable_from_start,unreachable_free,max_static_distance,leaves,branches,static_probe_outcome,static_probe_coverage,static_probe_steps,static_probe_returns,static_probe_recharges,expected_behavior
+bench_g1a_density_00.txt,120,20,20,400,0,100.0,1,400,0,38,0,396,SUCCESS,100.0,624,6,5,SUCCESS expected under static policy
+bench_g1a_density_40_irregular.txt,180,20,20,274,126,68.5,1,274,0,39,28,129,SUCCESS,100.0,556,4,3,SUCCESS expected under static policy
+bench_g1b_branch_d50.txt,220,20,20,116,284,29.0,1,116,0,21,2,36,SUCCESS,100.0,166,1,0,SUCCESS expected under static policy
+bench_g1b_branch_d60.txt,230,20,20,100,300,25.0,1,100,0,19,2,49,SUCCESS,100.0,136,1,0,SUCCESS expected under static policy
+bench_g1b_branch_d70.txt,240,20,20,92,308,23.0,1,92,0,19,2,49,SUCCESS,100.0,136,1,0,SUCCESS expected under static policy
+bench_g1c_fragmented_d80.txt,120,20,20,150,250,37.5,86,44,106,38,43,5,FAILED_NO_USABLE_PATH,29.33,82,0,0,FAILED_or_PARTIAL due to unreachable fragmented components
+bench_g1c_fragmented_d90.txt,120,20,20,108,292,27.0,71,23,85,19,35,3,FAILED_NO_USABLE_PATH,21.3,42,0,0,FAILED_or_PARTIAL due to unreachable fragmented components
+bench_g1d_long_snake_infeasible.txt,120,20,20,210,190,52.5,1,210,0,209,2,0,PARTIAL_RETURNED,24.76,102,1,1,PARTIAL_RETURNED due to max-energy infeasible long snake
+bench_g1d_multi_branch_abundant.txt,230,20,20,146,254,36.5,1,146,0,22,2,45,SUCCESS,100.0,170,1,0,SUCCESS expected under static policy
+bench_g1d_multi_branch_power_61.txt,61,20,20,146,254,36.5,1,146,0,22,2,45,SUCCESS,100.0,276,6,5,SUCCESS expected under static policy
+bench_g1d_multi_branch_power_save.txt,60,20,20,146,254,36.5,1,146,0,22,2,45,SUCCESS,100.0,292,6,5,SUCCESS expected under static policy
+bench_g1e_loop_ring_d55.txt,230,20,20,150,250,37.5,1,150,0,24,2,26,SUCCESS,100.0,178,1,0,SUCCESS expected under static policy
+bench_g1f_chokepoint_d60.txt,230,20,20,148,252,37.0,1,148,0,28,1,28,SUCCESS,100.0,196,1,0,SUCCESS expected under static policy
