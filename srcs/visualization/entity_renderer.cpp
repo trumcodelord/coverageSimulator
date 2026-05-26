@@ -1,6 +1,5 @@
 #include "entity_renderer.h"
 
-#include "coverage_timing.h"
 #include "dynamic_obstacle.h"
 #include "grid.h"
 #include "image_utils.h"
@@ -11,164 +10,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <deque>
-#include <map>
-#include <vector>
 
 using namespace std;
 using namespace cv;
 
 namespace
 {
-    constexpr int ROBOT_MIN_MOVE_FRAMES = 1;
-    constexpr int ROBOT_MAX_MOVE_FRAMES = 32;
-
-    struct RobotVisualState
-    {
-        bool initialized = false;
-        Cell latestLogicalPos = {0, 0};
-        Cell activeFrom = {0, 0};
-        Cell activeTo = {0, 0};
-        deque<Cell> pendingTargets;
-
-        vector<Cell> visualTrail;
-        map<Edge, int> visualEdgeCount;
-
-        float x = 0.0f;
-        float y = 0.0f;
-        float fromX = 0.0f;
-        float fromY = 0.0f;
-        float toX = 0.0f;
-        float toY = 0.0f;
-        int frame = 0;
-        int totalFrames = 1;
-    };
-
-    RobotVisualState &robotVisualState()
-    {
-        static RobotVisualState state;
-        return state;
-    }
-
-    int ceilDivPositive(int a, int b)
-    {
-        return (a + b - 1) / b;
-    }
-
-    int moveFramesForMode(RobotMode mode)
-    {
-        int logicalStepMs = stepTicksForMode(mode) * simTickMs();
-        int frames = ceilDivPositive(logicalStepMs, max(1, renderDelayMs()));
-
-        return max(ROBOT_MIN_MOVE_FRAMES, min(ROBOT_MAX_MOVE_FRAMES, frames));
-    }
-
-    bool isAdjacent(Cell a, Cell b)
-    {
-        return abs(a.r - b.r) + abs(a.c - b.c) == 1;
-    }
-
-    bool isRobotAnimating()
-    {
-        const RobotVisualState &state = robotVisualState();
-        return state.initialized && state.frame < state.totalFrames;
-    }
-
-    void pushPendingTarget(RobotVisualState &state, Cell target)
-    {
-        if (target == state.latestLogicalPos)
-            return;
-
-        if (!state.pendingTargets.empty() && target == state.pendingTargets.back())
-            return;
-
-        state.pendingTargets.push_back(target);
-    }
-
-    void appendVisualTrailCell(RobotVisualState &state, Cell cell)
-    {
-        if (!state.visualTrail.empty() && state.visualTrail.back() == cell)
-            return;
-
-        if (!state.visualTrail.empty())
-        {
-            Cell prev = state.visualTrail.back();
-            Edge e(prev, cell);
-            state.visualEdgeCount[e]++;
-        }
-
-        state.visualTrail.push_back(cell);
-    }
-
-    void syncPendingRobotTargets(const Robot &rb)
-    {
-        RobotVisualState &state = robotVisualState();
-
-        if (rb.pos == state.latestLogicalPos)
-            return;
-
-        bool appendedFromTrail = false;
-
-        for (int i = (int)rb.trail.size() - 1; i >= 0; i--)
-        {
-            if (!(rb.trail[i] == state.latestLogicalPos))
-                continue;
-
-            for (int j = i + 1; j < (int)rb.trail.size(); j++)
-                pushPendingTarget(state, rb.trail[j]);
-
-            appendedFromTrail = true;
-            break;
-        }
-
-        if (!appendedFromTrail)
-        {
-            Cell cursor = state.latestLogicalPos;
-
-            if (isAdjacent(cursor, rb.pos))
-            {
-                pushPendingTarget(state, rb.pos);
-            }
-            else
-            {
-                while (cursor.r != rb.pos.r)
-                {
-                    cursor.r += (rb.pos.r > cursor.r) ? 1 : -1;
-                    pushPendingTarget(state, cursor);
-                }
-
-                while (cursor.c != rb.pos.c)
-                {
-                    cursor.c += (rb.pos.c > cursor.c) ? 1 : -1;
-                    pushPendingTarget(state, cursor);
-                }
-            }
-        }
-
-        state.latestLogicalPos = rb.pos;
-    }
-
-    void startNextRobotVisualSegment(RobotVisualState &state, RobotMode mode)
-    {
-        if (isRobotAnimating() || state.pendingTargets.empty())
-            return;
-
-        Cell next = state.pendingTargets.front();
-        state.pendingTargets.pop_front();
-
-        state.activeFrom = state.activeTo;
-        state.activeTo = next;
-
-        state.fromX = (float)state.activeFrom.r;
-        state.fromY = (float)state.activeFrom.c;
-        state.toX = (float)state.activeTo.r;
-        state.toY = (float)state.activeTo.c;
-        state.x = state.fromX;
-        state.y = state.fromY;
-        state.frame = 0;
-        state.totalFrames = moveFramesForMode(mode);
-    }
-
     Scalar getTrailColor(int cnt)
     {
         if (cnt <= 1)
@@ -202,6 +49,16 @@ namespace
         return 0.0;
     }
 
+    bool pendingMoveDelta(const CoverageContext &ctx, float &dr, float &dc)
+    {
+        if (!ctx.pendingMove.active)
+            return false;
+
+        dr = (float)(ctx.pendingMove.to.r - ctx.pendingMove.from.r);
+        dc = (float)(ctx.pendingMove.to.c - ctx.pendingMove.from.c);
+        return fabs(dr) > 1e-5f || fabs(dc) > 1e-5f;
+    }
+
     Cell robotHeadingTarget(const Robot &rb)
     {
         if (rb.pathID < (int)rb.path.size())
@@ -220,28 +77,10 @@ namespace
         return {rb.pos.r - 1, rb.pos.c};
     }
 
-    bool robotHeadingDelta(const Robot &rb, float &dr, float &dc)
+    bool robotHeadingDelta(const Robot &rb, const CoverageContext &ctx, float &dr, float &dc)
     {
-        const RobotVisualState &state = robotVisualState();
-
-        if (isRobotAnimating())
-        {
-            dr = state.toX - state.fromX;
-            dc = state.toY - state.fromY;
-
-            if (fabs(dr) > 1e-5f || fabs(dc) > 1e-5f)
-                return true;
-        }
-
-        if (!state.pendingTargets.empty())
-        {
-            Cell next = state.pendingTargets.front();
-            dr = (float)(next.r - state.activeTo.r);
-            dc = (float)(next.c - state.activeTo.c);
-
-            if (fabs(dr) > 1e-5f || fabs(dc) > 1e-5f)
-                return true;
-        }
+        if (pendingMoveDelta(ctx, dr, dc))
+            return true;
 
         Cell next = robotHeadingTarget(rb);
         dr = (float)(next.r - rb.pos.r);
@@ -264,68 +103,32 @@ namespace
         return 0.0;
     }
 
-    double robotRotationAngleDeg(const Robot &rb)
+    double robotRotationAngleDeg(const Robot &rb, const CoverageContext &ctx)
     {
         float dr = 0.0f;
         float dc = 0.0f;
 
-        if (!robotHeadingDelta(rb, dr, dc))
+        if (!robotHeadingDelta(rb, ctx, dr, dc))
             return 0.0;
 
         return angleFromGridDelta(dr, dc);
     }
 
-    Point visualRobotCenter(const Robot &rb, RobotMode mode)
+    Point robotVisualCenter(const Robot &rb, const CoverageContext &ctx)
     {
-        RobotVisualState &state = robotVisualState();
+        if (!ctx.pendingMove.active)
+            return visualCellCenter(rb.pos.r, rb.pos.c);
 
-        if (!state.initialized)
-        {
-            state.initialized = true;
-            state.latestLogicalPos = rb.pos;
-            state.activeFrom = rb.pos;
-            state.activeTo = rb.pos;
-            state.x = (float)rb.pos.r;
-            state.y = (float)rb.pos.c;
-            state.fromX = state.x;
-            state.fromY = state.y;
-            state.toX = state.x;
-            state.toY = state.y;
-            state.frame = 1;
-            state.totalFrames = 1;
-            appendVisualTrailCell(state, rb.pos);
-        }
+        float t = pendingRobotMoveProgress(ctx);
+        float r = ctx.pendingMove.from.r +
+                  (ctx.pendingMove.to.r - ctx.pendingMove.from.r) * t;
+        float c = ctx.pendingMove.from.c +
+                  (ctx.pendingMove.to.c - ctx.pendingMove.from.c) * t;
 
-        syncPendingRobotTargets(rb);
-        startNextRobotVisualSegment(state, mode);
-
-        if (state.frame < state.totalFrames)
-        {
-            state.frame++;
-            float t = (float)state.frame / (float)state.totalFrames;
-            t = max(0.0f, min(1.0f, t));
-
-            state.x = state.fromX + (state.toX - state.fromX) * t;
-            state.y = state.fromY + (state.toY - state.fromY) * t;
-
-            if (state.frame >= state.totalFrames)
-            {
-                state.x = state.toX;
-                state.y = state.toY;
-                appendVisualTrailCell(state, state.activeTo);
-            }
-        }
-        else
-        {
-            state.x = (float)state.activeTo.r;
-            state.y = (float)state.activeTo.c;
-            startNextRobotVisualSegment(state, mode);
-        }
-
-        return visualWorldCenter(state.x, state.y);
+        return visualWorldCenter(r, c);
     }
 
-    void paintRobotFallback(Mat &canvas, const Robot &rb, Point center)
+    void paintRobotFallback(Mat &canvas, const Robot &rb, const CoverageContext &ctx, Point center)
     {
         int cellSize = visualCellSize();
         int radius = max(4, cellSize / 5);
@@ -339,7 +142,7 @@ namespace
         float dr = 0.0f;
         float dc = 0.0f;
 
-        if (!robotHeadingDelta(rb, dr, dc))
+        if (!robotHeadingDelta(rb, ctx, dr, dc))
             return;
 
         int arrowLen = radius + max(6, cellSize / 4);
@@ -421,9 +224,9 @@ void paintBase(Mat &canvas, const Robot &rb)
     paintBaseFallback(canvas, rb);
 }
 
-void paintRobot(Mat &canvas, const Robot &rb, RobotMode mode)
+void paintRobot(Mat &canvas, const Robot &rb, const CoverageContext &ctx)
 {
-    Point center = visualRobotCenter(rb, mode);
+    Point center = robotVisualCenter(rb, ctx);
     int size = max(18, (int)(visualCellSize() * 0.90));
 
     if (!robotIcon().empty())
@@ -431,14 +234,14 @@ void paintRobot(Mat &canvas, const Robot &rb, RobotMode mode)
         Mat rotatedRobot = rotateIconForOverlay(
             robotIcon(),
             size,
-            robotRotationAngleDeg(rb)
+            robotRotationAngleDeg(rb, ctx)
         );
 
         overlayImage(canvas, rotatedRobot, center, size);
         return;
     }
 
-    paintRobotFallback(canvas, rb, center);
+    paintRobotFallback(canvas, rb, ctx, center);
 }
 
 void paintPath(Mat &canvas, const Robot &rb)
@@ -446,9 +249,7 @@ void paintPath(Mat &canvas, const Robot &rb)
     if ((int)rb.path.size() < 2)
         return;
 
-    // Planned path is intentionally rendered as a thin neutral hint.
-    // The orange arrows are reserved for visited visual trail only.
-    Scalar pathColor(170, 170, 170);
+    Scalar pathColor(50, 150, 255);
 
     for (int i = max(1, rb.pathID); i < (int)rb.path.size(); i++)
     {
@@ -458,39 +259,19 @@ void paintPath(Mat &canvas, const Robot &rb)
         Point p1 = visualCellCenter(a.r, a.c);
         Point p2 = visualCellCenter(b.r, b.c);
 
-        line(canvas, p1, p2, pathColor, 1, LINE_AA);
-    }
-}
-
-void paintVisualCoverage(Mat &canvas)
-{
-    const RobotVisualState &state = robotVisualState();
-
-    for (Cell cell : state.visualTrail)
-    {
-        if (!inBounds(cell.r, cell.c) || blocked[cell.r][cell.c])
-            continue;
-
-        Point tl = visualCellTopLeft(cell.r, cell.c);
-        Point br(tl.x + visualCellSize(), tl.y + visualCellSize());
-
-        rectangle(canvas, tl, br, Scalar(220, 245, 220), FILLED);
+        arrowedLine(canvas, p1, p2, pathColor, 2, LINE_AA, 0, 0.12);
     }
 }
 
 void paintTrail(Mat &canvas, const Robot &rb)
 {
-    (void)rb;
-
-    const RobotVisualState &state = robotVisualState();
-
-    if (state.visualTrail.size() < 2)
+    if (rb.trail.size() < 2)
         return;
 
-    for (int i = 1; i < (int)state.visualTrail.size(); i++)
+    for (int i = 1; i < (int)rb.trail.size(); i++)
     {
-        Cell a = state.visualTrail[i - 1];
-        Cell b = state.visualTrail[i];
+        Cell a = rb.trail[i - 1];
+        Cell b = rb.trail[i];
 
         Point p1 = visualCellCenter(a.r, a.c);
         Point p2 = visualCellCenter(b.r, b.c);
@@ -498,9 +279,9 @@ void paintTrail(Mat &canvas, const Robot &rb)
         Edge e(a, b);
         int cnt = 1;
 
-        auto it = state.visualEdgeCount.find(e);
+        auto it = rb.edgeCount.find(e);
 
-        if (it != state.visualEdgeCount.end())
+        if (it != rb.edgeCount.end())
             cnt = it->second;
 
         Scalar color = getTrailColor(cnt);
