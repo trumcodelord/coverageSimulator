@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 
 using namespace std;
 using namespace cv;
@@ -22,7 +23,11 @@ namespace
     struct RobotVisualState
     {
         bool initialized = false;
-        Cell targetLogicalPos = {0, 0};
+        Cell latestLogicalPos = {0, 0};
+        Cell activeFrom = {0, 0};
+        Cell activeTo = {0, 0};
+        deque<Cell> pendingTargets;
+
         float x = 0.0f;
         float y = 0.0f;
         float fromX = 0.0f;
@@ -52,10 +57,97 @@ namespace
         return max(ROBOT_MIN_MOVE_FRAMES, min(ROBOT_MAX_MOVE_FRAMES, frames));
     }
 
+    bool isAdjacent(Cell a, Cell b)
+    {
+        return abs(a.r - b.r) + abs(a.c - b.c) == 1;
+    }
+
     bool isRobotAnimating()
     {
         const RobotVisualState &state = robotVisualState();
         return state.initialized && state.frame < state.totalFrames;
+    }
+
+    void pushPendingTarget(RobotVisualState &state, Cell target)
+    {
+        if (target == state.latestLogicalPos)
+            return;
+
+        if (!state.pendingTargets.empty() && target == state.pendingTargets.back())
+            return;
+
+        state.pendingTargets.push_back(target);
+    }
+
+    void syncPendingRobotTargets(const Robot &rb)
+    {
+        RobotVisualState &state = robotVisualState();
+
+        if (rb.pos == state.latestLogicalPos)
+            return;
+
+        bool appendedFromTrail = false;
+
+        for (int i = (int)rb.trail.size() - 1; i >= 0; i--)
+        {
+            if (!(rb.trail[i] == state.latestLogicalPos))
+                continue;
+
+            for (int j = i + 1; j < (int)rb.trail.size(); j++)
+                pushPendingTarget(state, rb.trail[j]);
+
+            appendedFromTrail = true;
+            break;
+        }
+
+        if (!appendedFromTrail)
+        {
+            Cell cursor = state.latestLogicalPos;
+
+            if (isAdjacent(cursor, rb.pos))
+            {
+                pushPendingTarget(state, rb.pos);
+            }
+            else
+            {
+                // Fallback for rare skipped-render cases: move by row, then column.
+                // Normal execution should use rb.trail above, which preserves the true path.
+                while (cursor.r != rb.pos.r)
+                {
+                    cursor.r += (rb.pos.r > cursor.r) ? 1 : -1;
+                    pushPendingTarget(state, cursor);
+                }
+
+                while (cursor.c != rb.pos.c)
+                {
+                    cursor.c += (rb.pos.c > cursor.c) ? 1 : -1;
+                    pushPendingTarget(state, cursor);
+                }
+            }
+        }
+
+        state.latestLogicalPos = rb.pos;
+    }
+
+    void startNextRobotVisualSegment(RobotVisualState &state, RobotMode mode)
+    {
+        if (isRobotAnimating() || state.pendingTargets.empty())
+            return;
+
+        Cell next = state.pendingTargets.front();
+        state.pendingTargets.pop_front();
+
+        state.activeFrom = state.activeTo;
+        state.activeTo = next;
+
+        state.fromX = (float)state.activeFrom.r;
+        state.fromY = (float)state.activeFrom.c;
+        state.toX = (float)state.activeTo.r;
+        state.toY = (float)state.activeTo.c;
+        state.x = state.fromX;
+        state.y = state.fromY;
+        state.frame = 0;
+        state.totalFrames = moveFramesForMode(mode);
     }
 
     Scalar getTrailColor(int cnt)
@@ -122,6 +214,16 @@ namespace
                 return true;
         }
 
+        if (!state.pendingTargets.empty())
+        {
+            Cell next = state.pendingTargets.front();
+            dr = (float)(next.r - state.activeTo.r);
+            dc = (float)(next.c - state.activeTo.c);
+
+            if (fabs(dr) > 1e-5f || fabs(dc) > 1e-5f)
+                return true;
+        }
+
         Cell next = robotHeadingTarget(rb);
         dr = (float)(next.r - rb.pos.r);
         dc = (float)(next.c - rb.pos.c);
@@ -161,7 +263,9 @@ namespace
         if (!state.initialized)
         {
             state.initialized = true;
-            state.targetLogicalPos = rb.pos;
+            state.latestLogicalPos = rb.pos;
+            state.activeFrom = rb.pos;
+            state.activeTo = rb.pos;
             state.x = (float)rb.pos.r;
             state.y = (float)rb.pos.c;
             state.fromX = state.x;
@@ -172,16 +276,8 @@ namespace
             state.totalFrames = 1;
         }
 
-        if (!(rb.pos == state.targetLogicalPos))
-        {
-            state.targetLogicalPos = rb.pos;
-            state.fromX = state.x;
-            state.fromY = state.y;
-            state.toX = (float)rb.pos.r;
-            state.toY = (float)rb.pos.c;
-            state.frame = 0;
-            state.totalFrames = moveFramesForMode(mode);
-        }
+        syncPendingRobotTargets(rb);
+        startNextRobotVisualSegment(state, mode);
 
         if (state.frame < state.totalFrames)
         {
@@ -189,15 +285,20 @@ namespace
             float t = (float)state.frame / (float)state.totalFrames;
             t = max(0.0f, min(1.0f, t));
 
-            // Linear interpolation preserves the old perceived speed.
-            // Ease-in/out would look nicer but makes the robot accelerate/decelerate visually.
             state.x = state.fromX + (state.toX - state.fromX) * t;
             state.y = state.fromY + (state.toY - state.fromY) * t;
+
+            if (state.frame >= state.totalFrames)
+            {
+                state.x = state.toX;
+                state.y = state.toY;
+            }
         }
         else
         {
-            state.x = (float)rb.pos.r;
-            state.y = (float)rb.pos.c;
+            state.x = (float)state.activeTo.r;
+            state.y = (float)state.activeTo.c;
+            startNextRobotVisualSegment(state, mode);
         }
 
         return visualWorldCenter(state.x, state.y);
