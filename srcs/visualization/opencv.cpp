@@ -44,7 +44,7 @@ void closeWindow()
     destroyWindow(visualWindowName());
 }
 
-void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
+void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int delay)
 {
     Mat canvas(
         visualCanvasHeight(),
@@ -53,8 +53,7 @@ void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
         Scalar(240, 240, 240)
     );
 
-    paintMapCells(canvas, false);
-    paintVisualCoverage(canvas);
+    paintMapCells(canvas);
     paintGridLines(canvas);
     paintTrail(canvas, rb);
 
@@ -63,7 +62,7 @@ void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
 
     paintBase(canvas, rb);
     paintDynamicObstacles(canvas);
-    paintRobot(canvas, rb, mode);
+    paintRobot(canvas, rb, ctx);
     paintHUD(canvas, rb, delay);
 
     lastFrame = canvas.clone();
