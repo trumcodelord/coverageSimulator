@@ -250,7 +250,7 @@ void paintPath(Mat &canvas, const Robot &rb)
     if ((int)rb.path.size() < 2)
         return;
 
-    Scalar pathColor(50, 150, 255);
+    Scalar pathColor(255, 140, 30);
 
     for (int i = max(1, rb.pathID); i < (int)rb.path.size(); i++)
     {
