@@ -6,7 +6,7 @@
 
 void initWindow();
 void closeWindow();
-void drawFrame(const Robot &rb, bool showPath, int delay);
+void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode = NORMAL);
 void waitFrame(int delay);
 
 bool saveCurrentFrame(const std::string &filename);
