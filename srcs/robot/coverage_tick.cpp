@@ -110,6 +110,36 @@ namespace
         }
     }
 
+    void handlePostMoveEnergy(Robot &rb, CoverageContext &ctx)
+    {
+        if (ctx.shouldStop || ctx.needWaitDraw)
+            return;
+
+        if (ctx.mode == FINAL_PUSH)
+            return;
+
+        if (ctx.mode == RETURN_TO_BASE || ctx.mode == RECHARGING)
+            return;
+
+        if (shouldRobotReturnForEnergy(rb))
+            enterReturnToBase(ctx, rb);
+    }
+
+    bool advancePendingMoveIfNeeded(Robot &rb, CoverageContext &ctx)
+    {
+        if (!hasPendingRobotMove(ctx))
+            return false;
+
+        RobotMoveResult move = advancePendingRobotMove(rb, ctx);
+        handleMoveResult(rb, ctx, move);
+
+        if (move.moved)
+            handlePostMoveEnergy(rb, ctx);
+
+        ctx.needWaitDraw = true;
+        return true;
+    }
+
     void moveIfPossible(Robot &rb, CoverageContext &ctx)
     {
         if (ctx.shouldStop || ctx.needWaitDraw || ctx.mode == HOLD_SAFE)
@@ -117,8 +147,6 @@ namespace
 
         if (rb.pathID >= (int)rb.path.size())
             return;
-
-        int stepsBefore = rb.steps;
 
         int energyCost = energyCostForNextMove(rb, ctx.mode);
 
@@ -130,24 +158,16 @@ namespace
 
         handleMoveResult(rb, ctx, move);
 
-        if (!ctx.shouldStop &&
-            !ctx.needWaitDraw &&
-            rb.steps > stepsBefore)
-        {
-            if (ctx.mode != FINAL_PUSH && shouldRobotReturnForEnergy(rb))
-            {
-                enterReturnToBase(ctx, rb);
-                setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
-                return;
-            }
-
-            setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
-        }
+        if (move.moved)
+            handlePostMoveEnergy(rb, ctx);
     }
 }
 
 void processCoverageTick(Robot &rb, CoverageContext &ctx)
 {
+    if (advancePendingMoveIfNeeded(rb, ctx))
+        return;
+
     if (ctx.actionCooldownTicks > 0)
     {
         ctx.actionCooldownTicks--;
@@ -226,6 +246,9 @@ void handleCoverageCompletion(
     Robot &rb,
     bool &finished
 ) {
+    if (hasPendingRobotMove(ctx))
+        return;
+
     if (!allCovered())
         return;
 
