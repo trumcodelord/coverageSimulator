@@ -44,7 +44,7 @@ void closeWindow()
     destroyWindow(visualWindowName());
 }
 
-void drawFrame(const Robot &rb, bool showPath, int delay)
+void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
 {
     Mat canvas(
         visualCanvasHeight(),
@@ -62,7 +62,7 @@ void drawFrame(const Robot &rb, bool showPath, int delay)
 
     paintBase(canvas, rb);
     paintDynamicObstacles(canvas);
-    paintRobot(canvas, rb);
+    paintRobot(canvas, rb, mode);
     paintHUD(canvas, rb, delay);
 
     lastFrame = canvas.clone();
