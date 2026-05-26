@@ -58,7 +58,7 @@ namespace
     }
 }
 
-void paintMapCells(Mat &canvas)
+void paintMapCells(Mat &canvas, bool showLogicalCoverage)
 {
     for (int r = 1; r <= rows; r++)
     {
@@ -72,7 +72,7 @@ void paintMapCells(Mat &canvas)
                 color = Scalar(255, 235, 180);
             else if (dynamicBlocked[r][c])
                 color = Scalar(180, 105, 255);
-            else if (covered[r][c])
+            else if (showLogicalCoverage && covered[r][c])
                 color = Scalar(220, 245, 220);
             else
                 color = Scalar(255, 255, 255);
