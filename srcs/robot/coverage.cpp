@@ -17,9 +17,9 @@ using namespace std;
 
 namespace
 {
-    void renderFrame(const Robot &rb)
+    void renderFrame(const Robot &rb, const CoverageContext &ctx)
     {
-        renderCoverageFrame(rb, true, renderDelayMs());
+        renderCoverageFrame(rb, ctx, true, renderDelayMs());
         waitFrame(renderDelayMs());
     }
 }
@@ -35,7 +35,7 @@ void executeCoverage(Robot &rb)
 
     initWindow();
     setHUDState("NORMAL");
-    renderFrame(rb);
+    renderFrame(rb, ctx);
 
     using Clock = chrono::steady_clock;
 
@@ -90,7 +90,7 @@ void executeCoverage(Robot &rb)
             );
         }
 
-        renderFrame(rb);
+        renderFrame(rb, ctx);
 
         if (ctx.shouldStop || finished)
             break;
