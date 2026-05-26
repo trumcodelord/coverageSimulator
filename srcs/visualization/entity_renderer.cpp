@@ -1,5 +1,6 @@
 #include "entity_renderer.h"
 
+#include "coverage_timing.h"
 #include "dynamic_obstacle.h"
 #include "image_utils.h"
 #include "visual_assets.h"
@@ -15,9 +16,8 @@ using namespace cv;
 
 namespace
 {
-    constexpr int ROBOT_DEFAULT_MOVE_FRAMES = 16;
     constexpr int ROBOT_MIN_MOVE_FRAMES = 1;
-    constexpr int ROBOT_MAX_MOVE_FRAMES = 24;
+    constexpr int ROBOT_MAX_MOVE_FRAMES = 32;
 
     struct RobotVisualState
     {
@@ -31,7 +31,6 @@ namespace
         float toY = 0.0f;
         int frame = 0;
         int totalFrames = 1;
-        int framesSinceLastMove = ROBOT_DEFAULT_MOVE_FRAMES;
     };
 
     RobotVisualState &robotVisualState()
@@ -40,8 +39,16 @@ namespace
         return state;
     }
 
-    int clampMoveFrames(int frames)
+    int ceilDivPositive(int a, int b)
     {
+        return (a + b - 1) / b;
+    }
+
+    int moveFramesForMode(RobotMode mode)
+    {
+        int logicalStepMs = stepTicksForMode(mode) * simTickMs();
+        int frames = ceilDivPositive(logicalStepMs, max(1, renderDelayMs()));
+
         return max(ROBOT_MIN_MOVE_FRAMES, min(ROBOT_MAX_MOVE_FRAMES, frames));
     }
 
@@ -147,7 +154,7 @@ namespace
         return angleFromGridDelta(dr, dc);
     }
 
-    Point visualRobotCenter(const Robot &rb)
+    Point visualRobotCenter(const Robot &rb, RobotMode mode)
     {
         RobotVisualState &state = robotVisualState();
 
@@ -161,23 +168,19 @@ namespace
             state.fromY = state.y;
             state.toX = state.x;
             state.toY = state.y;
-            state.frame = ROBOT_DEFAULT_MOVE_FRAMES;
-            state.totalFrames = ROBOT_DEFAULT_MOVE_FRAMES;
-            state.framesSinceLastMove = ROBOT_DEFAULT_MOVE_FRAMES;
+            state.frame = 1;
+            state.totalFrames = 1;
         }
 
         if (!(rb.pos == state.targetLogicalPos))
         {
-            int observedFrames = clampMoveFrames(state.framesSinceLastMove);
-
             state.targetLogicalPos = rb.pos;
             state.fromX = state.x;
             state.fromY = state.y;
             state.toX = (float)rb.pos.r;
             state.toY = (float)rb.pos.c;
             state.frame = 0;
-            state.totalFrames = observedFrames;
-            state.framesSinceLastMove = 0;
+            state.totalFrames = moveFramesForMode(mode);
         }
 
         if (state.frame < state.totalFrames)
@@ -185,18 +188,17 @@ namespace
             state.frame++;
             float t = (float)state.frame / (float)state.totalFrames;
             t = max(0.0f, min(1.0f, t));
-            float smooth = t * t * (3.0f - 2.0f * t);
 
-            state.x = state.fromX + (state.toX - state.fromX) * smooth;
-            state.y = state.fromY + (state.toY - state.fromY) * smooth;
+            // Linear interpolation preserves the old perceived speed.
+            // Ease-in/out would look nicer but makes the robot accelerate/decelerate visually.
+            state.x = state.fromX + (state.toX - state.fromX) * t;
+            state.y = state.fromY + (state.toY - state.fromY) * t;
         }
         else
         {
             state.x = (float)rb.pos.r;
             state.y = (float)rb.pos.c;
         }
-
-        state.framesSinceLastMove = clampMoveFrames(state.framesSinceLastMove + 1);
 
         return visualWorldCenter(state.x, state.y);
     }
@@ -297,9 +299,9 @@ void paintBase(Mat &canvas, const Robot &rb)
     paintBaseFallback(canvas, rb);
 }
 
-void paintRobot(Mat &canvas, const Robot &rb)
+void paintRobot(Mat &canvas, const Robot &rb, RobotMode mode)
 {
-    Point center = visualRobotCenter(rb);
+    Point center = visualRobotCenter(rb, mode);
     int size = max(18, (int)(visualCellSize() * 0.90));
 
     if (!robotIcon().empty())
