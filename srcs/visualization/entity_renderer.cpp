@@ -2,6 +2,7 @@
 
 #include "coverage_timing.h"
 #include "dynamic_obstacle.h"
+#include "grid.h"
 #include "image_utils.h"
 #include "visual_assets.h"
 #include "visual_layout.h"
@@ -11,6 +12,8 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <map>
+#include <vector>
 
 using namespace std;
 using namespace cv;
@@ -27,6 +30,9 @@ namespace
         Cell activeFrom = {0, 0};
         Cell activeTo = {0, 0};
         deque<Cell> pendingTargets;
+
+        vector<Cell> visualTrail;
+        map<Edge, int> visualEdgeCount;
 
         float x = 0.0f;
         float y = 0.0f;
@@ -79,6 +85,21 @@ namespace
         state.pendingTargets.push_back(target);
     }
 
+    void appendVisualTrailCell(RobotVisualState &state, Cell cell)
+    {
+        if (!state.visualTrail.empty() && state.visualTrail.back() == cell)
+            return;
+
+        if (!state.visualTrail.empty())
+        {
+            Cell prev = state.visualTrail.back();
+            Edge e(prev, cell);
+            state.visualEdgeCount[e]++;
+        }
+
+        state.visualTrail.push_back(cell);
+    }
+
     void syncPendingRobotTargets(const Robot &rb)
     {
         RobotVisualState &state = robotVisualState();
@@ -110,8 +131,6 @@ namespace
             }
             else
             {
-                // Fallback for rare skipped-render cases: move by row, then column.
-                // Normal execution should use rb.trail above, which preserves the true path.
                 while (cursor.r != rb.pos.r)
                 {
                     cursor.r += (rb.pos.r > cursor.r) ? 1 : -1;
@@ -274,6 +293,7 @@ namespace
             state.toY = state.y;
             state.frame = 1;
             state.totalFrames = 1;
+            appendVisualTrailCell(state, rb.pos);
         }
 
         syncPendingRobotTargets(rb);
@@ -292,6 +312,7 @@ namespace
             {
                 state.x = state.toX;
                 state.y = state.toY;
+                appendVisualTrailCell(state, state.activeTo);
             }
         }
         else
@@ -425,7 +446,9 @@ void paintPath(Mat &canvas, const Robot &rb)
     if ((int)rb.path.size() < 2)
         return;
 
-    Scalar pathColor(255, 120, 0);
+    // Planned path is intentionally rendered as a thin neutral hint.
+    // The orange arrows are reserved for visited visual trail only.
+    Scalar pathColor(170, 170, 170);
 
     for (int i = max(1, rb.pathID); i < (int)rb.path.size(); i++)
     {
@@ -435,19 +458,39 @@ void paintPath(Mat &canvas, const Robot &rb)
         Point p1 = visualCellCenter(a.r, a.c);
         Point p2 = visualCellCenter(b.r, b.c);
 
-        arrowedLine(canvas, p1, p2, pathColor, 2);
+        line(canvas, p1, p2, pathColor, 1, LINE_AA);
+    }
+}
+
+void paintVisualCoverage(Mat &canvas)
+{
+    const RobotVisualState &state = robotVisualState();
+
+    for (Cell cell : state.visualTrail)
+    {
+        if (!inBounds(cell.r, cell.c) || blocked[cell.r][cell.c])
+            continue;
+
+        Point tl = visualCellTopLeft(cell.r, cell.c);
+        Point br(tl.x + visualCellSize(), tl.y + visualCellSize());
+
+        rectangle(canvas, tl, br, Scalar(220, 245, 220), FILLED);
     }
 }
 
 void paintTrail(Mat &canvas, const Robot &rb)
 {
-    if (rb.trail.size() < 2)
+    (void)rb;
+
+    const RobotVisualState &state = robotVisualState();
+
+    if (state.visualTrail.size() < 2)
         return;
 
-    for (int i = 1; i < (int)rb.trail.size(); i++)
+    for (int i = 1; i < (int)state.visualTrail.size(); i++)
     {
-        Cell a = rb.trail[i - 1];
-        Cell b = rb.trail[i];
+        Cell a = state.visualTrail[i - 1];
+        Cell b = state.visualTrail[i];
 
         Point p1 = visualCellCenter(a.r, a.c);
         Point p2 = visualCellCenter(b.r, b.c);
@@ -455,9 +498,9 @@ void paintTrail(Mat &canvas, const Robot &rb)
         Edge e(a, b);
         int cnt = 1;
 
-        auto it = rb.edgeCount.find(e);
+        auto it = state.visualEdgeCount.find(e);
 
-        if (it != rb.edgeCount.end())
+        if (it != state.visualEdgeCount.end())
             cnt = it->second;
 
         Scalar color = getTrailColor(cnt);
