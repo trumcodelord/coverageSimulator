@@ -19,3 +19,12 @@ RobotMoveResult moveRobotAlongCurrentPath(
     CoverageContext &ctx,
     int energyCost
 );
+
+bool hasPendingRobotMove(const CoverageContext &ctx);
+
+RobotMoveResult advancePendingRobotMove(
+    Robot &rb,
+    CoverageContext &ctx
+);
+
+float pendingRobotMoveProgress(const CoverageContext &ctx);
