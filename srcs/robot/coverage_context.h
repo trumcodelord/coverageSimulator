@@ -2,6 +2,20 @@
 
 #include "types.h"
 
+struct PendingRobotMove
+{
+    bool active = false;
+
+    Cell from = {0, 0};
+    Cell to = {0, 0};
+
+    int energyCost = 0;
+    int elapsedTicks = 0;
+    int totalTicks = 1;
+
+    bool enteredUncoveredCell = false;
+};
+
 struct CoverageContext
 {
     RobotMode mode = NORMAL;
@@ -15,6 +29,7 @@ struct CoverageContext
     int returnWaitCount = 0;
 
     int actionCooldownTicks = 0;
+    PendingRobotMove pendingMove;
 
     bool coverageComplete = false;
     bool returnToTerminate = false;
