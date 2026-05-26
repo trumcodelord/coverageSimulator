@@ -5,8 +5,8 @@
 
 #include <mutex>
 
-void renderCoverageFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
+void renderCoverageFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int delay)
 {
     std::lock_guard<std::mutex> lock(simMutex);
-    drawFrame(rb, showPath, delay, mode);
+    drawFrame(rb, ctx, showPath, delay);
 }
