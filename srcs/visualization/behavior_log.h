@@ -21,6 +21,16 @@ namespace behavior_log_detail
         static std::string path;
         return path;
     }
+
+    inline void writeLogFile(const std::string &message)
+    {
+        std::ofstream &file = logFile();
+        if (file.is_open())
+        {
+            file << message << '\n';
+            file.flush();
+        }
+    }
 }
 
 inline void initBehaviorLog(const std::string &mapName)
@@ -59,17 +69,21 @@ inline std::string behaviorLogPath()
     return behavior_log_detail::currentLogPath();
 }
 
-inline void logBehavior(const std::string &message)
+inline void logFileOnly(const std::string &message)
 {
     std::cout << message << '\n';
-    pushHUDEvent(message);
+    behavior_log_detail::writeLogFile(message);
+}
 
-    std::ofstream &file = behavior_log_detail::logFile();
-    if (file.is_open())
-    {
-        file << message << '\n';
-        file.flush();
-    }
+inline void logHUDOnly(const std::string &message)
+{
+    pushHUDEvent(message);
+}
+
+inline void logBehavior(const std::string &message)
+{
+    logFileOnly(message);
+    pushHUDEvent(message);
 }
 
 inline std::string cellText(Cell p)
@@ -102,7 +116,7 @@ inline void logReadableEvent(
     if (!details.empty())
         message += " " + details;
 
-    logBehavior(message);
+    logFileOnly(message);
 }
 
 inline void logRobotEvent(
@@ -126,7 +140,7 @@ inline void logRobotEvent(
     if (!details.empty())
         message += " " + details;
 
-    logBehavior(message);
+    logFileOnly(message);
 }
 
 inline void logEvent(
@@ -148,5 +162,5 @@ inline void logEvent(
     if (!details.empty())
         message += " " + details;
 
-    logBehavior(message);
+    logFileOnly(message);
 }
