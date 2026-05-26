@@ -53,7 +53,8 @@ void drawFrame(const Robot &rb, bool showPath, int delay, RobotMode mode)
         Scalar(240, 240, 240)
     );
 
-    paintMapCells(canvas);
+    paintMapCells(canvas, false);
+    paintVisualCoverage(canvas);
     paintGridLines(canvas);
     paintTrail(canvas, rb);
 
