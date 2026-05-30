@@ -182,7 +182,7 @@ void waitReturnToBase(
     {
         logBehavior("[RETURN] Cho qua lau, thu tim duong vong.");
 
-        PathBuildResult detour = rebuildSafeDetourPathToBase(rb);
+        PathBuildResult detour = rebuildSafeDetourPathToBase(rb, &ctx);
 
         if (detour.success)
         {
@@ -235,6 +235,18 @@ void enterReturnToBase(
 
     logBehavior(message);
 
+    int costToBase = estimateCostToBase(rb);
+    logRobotEvent(
+        "WARN",
+        "ENERGY",
+        "return_to_base_requested",
+        "Robot switches to return-to-base because continuing coverage is not safe or mission requires return.",
+        rb,
+        ctx.mode,
+        "cost_to_base=" + std::to_string(costToBase) +
+        " action=return_to_base"
+    );
+
     rb.returnCount++;
     ctx.returnWaitCount = 0;
     ctx.returnToTerminate = false;
@@ -243,7 +255,7 @@ void enterReturnToBase(
     switchMissionMode(ctx, RETURN_TO_BASE);
     setHUDState("RETURN_TO_BASE");
 
-    PathBuildResult path = rebuildPathToBase(rb);
+    PathBuildResult path = rebuildPathToBase(rb, &ctx);
 
     if (!path.success)
     {
@@ -300,7 +312,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
 
     if (rb.pathID >= (int)rb.path.size())
     {
-        PathBuildResult path = rebuildPathToBase(rb);
+        PathBuildResult path = rebuildPathToBase(rb, &ctx);
 
         if (!path.success)
         {

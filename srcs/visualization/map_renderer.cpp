@@ -6,6 +6,7 @@
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
+#include <string>
 
 using namespace cv;
 
@@ -121,5 +122,60 @@ void paintGridLines(Mat &canvas)
             lineColor,
             1
         );
+    }
+}
+
+void paintCoordinateHeaders(Mat &canvas)
+{
+    Rect grid = visualGridRect();
+    int cellSize = visualCellSize();
+
+    if (cellSize < 14)
+        return;
+
+    double fontScale = std::max(0.28, std::min(0.48, cellSize / 85.0));
+    int thickness = 1;
+    Scalar textColor(40, 40, 40);
+    Scalar bgColor(245, 245, 245);
+
+    int topBandHeight = std::max(14, cellSize / 3);
+    int leftBandWidth = std::max(18, cellSize / 2);
+
+    rectangle(
+        canvas,
+        Rect(grid.x, std::max(0, grid.y - topBandHeight), grid.width, topBandHeight),
+        bgColor,
+        FILLED
+    );
+
+    rectangle(
+        canvas,
+        Rect(std::max(0, grid.x - leftBandWidth), grid.y, leftBandWidth, grid.height),
+        bgColor,
+        FILLED
+    );
+
+    for (int c = 1; c <= cols; c++)
+    {
+        std::string label = std::to_string(c);
+        int baseline = 0;
+        Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, fontScale, thickness, &baseline);
+
+        int x = grid.x + (c - 1) * cellSize + (cellSize - textSize.width) / 2;
+        int y = grid.y - std::max(4, (topBandHeight - textSize.height) / 2);
+
+        putText(canvas, label, Point(x, y), FONT_HERSHEY_SIMPLEX, fontScale, textColor, thickness, LINE_AA);
+    }
+
+    for (int r = 1; r <= rows; r++)
+    {
+        std::string label = std::to_string(r);
+        int baseline = 0;
+        Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, fontScale, thickness, &baseline);
+
+        int x = grid.x - leftBandWidth + (leftBandWidth - textSize.width) / 2;
+        int y = grid.y + (r - 1) * cellSize + (cellSize + textSize.height) / 2;
+
+        putText(canvas, label, Point(x, y), FONT_HERSHEY_SIMPLEX, fontScale, textColor, thickness, LINE_AA);
     }
 }

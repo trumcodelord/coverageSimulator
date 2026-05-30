@@ -14,6 +14,7 @@ using namespace cv;
 namespace
 {
     Mat lastFrame;
+    bool showCoordinateHeaders = false;
 
     void ensureParentDirectory(const std::string &path)
     {
@@ -22,6 +23,20 @@ namespace
 
         if (!parent.empty())
             std::filesystem::create_directories(parent);
+    }
+
+    void handleKeyboard(int key)
+    {
+        if (key == 'c' || key == 'C')
+        {
+            showCoordinateHeaders = !showCoordinateHeaders;
+
+            pushHUDEvent(
+                showCoordinateHeaders
+                    ? "Coordinate headers enabled."
+                    : "Coordinate headers disabled."
+            );
+        }
     }
 }
 
@@ -55,6 +70,10 @@ void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int d
 
     paintMapCells(canvas);
     paintGridLines(canvas);
+
+    if (showCoordinateHeaders)
+        paintCoordinateHeaders(canvas);
+
     paintTrail(canvas, rb);
 
     if (showPath)
@@ -75,7 +94,8 @@ void waitFrame(int delay)
     if (delay < 0)
         delay = 0;
 
-    waitKey(delay);
+    int key = waitKey(delay);
+    handleKeyboard(key);
 }
 
 bool saveCurrentFrame(const std::string &filename)

@@ -1,23 +1,23 @@
 150
 20 20
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-W W W W W W W W W W W W W W W W W W W 1
+W W 1 W W W W W W W W W W W W W W W W 1
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
 1 W W W W W W W W W W W W W W W W W W W
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-W W W W W W W W W W W W W W W W W W W 1
+W W W 1 W W W W W W W W W W W W W W W 1
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
 1 W W W W W W W W W W W W W W W W W W W
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-W W W W W W W W W W W W W W W W W W W 1
+W W W W W W W W W 1 W W W W W W W W W 1
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-1 W W W W W W W W W W W W W W W W W W W
+1 W W W W W W 1 W W W W W W W W W W W W
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-W W W W W W W W W W W W W W W W W W W 1
+W W W W W W W 1 W W W W W W W W W W W 1
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-1 W W W W W W W W W W W W W W W W W W W
+1 W W W W 1 W W W W W W W W 1 W W W W W
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-W W W W W W W W W W W W W W W W W W W 1
+W W W 1 W W W W W W W W W W W W W W W 1
 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
 1 W W W W W W W W W W W W W W W W W W W
 0

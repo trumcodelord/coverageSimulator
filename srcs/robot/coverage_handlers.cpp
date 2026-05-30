@@ -55,7 +55,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            logBehavior("[ENERGY] Nang luong hien tai khong du de tiep tuc coverage. Sac lai pin.");
+            logBehavior("[ENERGY] Current energy is not enough to continue coverage. Recharging at base.");
             clearRobotPath(rb);
             switchMissionMode(ctx, RECHARGING);
             setCoverageCooldown(ctx, rechargeWaitTicks());
@@ -65,7 +65,7 @@ namespace
         enterReturnToBase(
             ctx,
             rb,
-            "[ENERGY] Nang luong hien tai khong du cho target tiep theo. Quay ve base de sac."
+            "[ENERGY] Current energy is not enough for the next target. Returning to base to recharge."
         );
     }
 
@@ -73,12 +73,12 @@ namespace
         Robot &rb,
         CoverageContext &ctx
     ) {
-        logBehavior("[ENERGY] Ngay ca khi sac day, khong con uncovered target nao kha thi voi return margin hien tai.");
+        logBehavior("[ENERGY] Even full battery cannot reach any remaining uncovered target and return with margin.");
 
         enterSafeTerminationReturn(
             ctx,
             rb,
-            "[RETURN] Coverage objective khong kha thi voi dung luong pin hien tai. Quay ve base de ket thuc an toan."
+            "[RETURN] Coverage objective is infeasible with current battery capacity. Returning to base safely."
         );
     }
 }
@@ -101,7 +101,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == PRESERVE)
     {
-        logBehavior("[COMMAND] PRESERVE. Chuyen sang POWER_SAVE.");
+        logBehavior("[COMMAND] PRESERVE. Switching to POWER_SAVE.");
 
         clearRobotPath(rb);
         switchMissionMode(ctx, POWER_SAVE);
@@ -114,7 +114,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == HEROIC)
     {
-        logBehavior("[COMMAND] HEROIC. Tiep tuc nhiem vu den khi het nang luong.");
+        logBehavior("[COMMAND] HEROIC. Continuing mission until energy is exhausted.");
         enterFinalPushMode(ctx, rb);
         return;
     }
@@ -129,13 +129,13 @@ void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
     ctx.alertFailCount++;
 
     printRetryMessage(
-        "[ALERT] Dynamic obstacle nam tren active path.",
+        "[ALERT] Dynamic obstacle is on the active path.",
         ctx.retryCount
     );
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] Active path bi chan lien tiep, chuyen sang HOLD_SAFE.");
+        logBehavior("[HOLD] Active path was blocked repeatedly. Switching to HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -163,11 +163,11 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     ctx.holdTick = 0;
     ctx.holdCycleCount++;
 
-    PathBuildResult recovered = rebuildPathToNearestUncoveredTarget(rb);
+    PathBuildResult recovered = rebuildPathToNearestUncoveredTarget(rb, &ctx);
 
     if (recovered.success)
     {
-        logBehavior("[RECOVER] Co duong usable tro lai, roi HOLD_SAFE.");
+        logBehavior("[RECOVER] A usable coverage path is available again. Leaving HOLD_SAFE.");
 
         switchMissionMode(ctx, ALERT);
 
@@ -193,7 +193,7 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
     {
         logBehavior(
-            "[HOLD] Chua co duong an toan. Tiep tuc cho. Cycle " +
+            "[HOLD] No safe path yet. Continuing to wait. Cycle " +
             to_string(ctx.holdCycleCount) + "/" +
             to_string(maxHoldCycles())
         );
@@ -201,12 +201,12 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
-        logBehavior("[RETURN] HOLD_SAFE qua lau, khong the tiep tuc coverage. Thu quay ve base.");
+        logBehavior("[RETURN] HOLD_SAFE lasted too long. Cannot continue coverage. Trying to return to base.");
 
         enterSafeTerminationReturn(
             ctx,
             rb,
-            "[RETURN] Khong recover duoc coverage path. Quay ve base neu con kha nang."
+            "[RETURN] Coverage path could not recover. Returning to base if possible."
         );
         return;
     }
@@ -222,13 +222,13 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     ctx.alertFailCount++;
 
     printRetryMessage(
-        "[WAIT] Chua co target/path usable tam thoi.",
+        "[WAIT] No usable target/path is available right now.",
         ctx.retryCount
     );
 
     if (ctx.retryCount > maxRetryCount())
     {
-        logBehavior("[STOP] Khong tim duoc target/path sau nhieu lan thu lai.");
+        logBehavior("[STOP] Could not find target/path after many retries.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -238,7 +238,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] Alert that bai lien tiep, chuyen sang HOLD_SAFE.");
+        logBehavior("[HOLD] Alert failed repeatedly. Switching to HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -258,7 +258,7 @@ void planPathIfNeeded(Robot &rb, CoverageContext &ctx)
     if (rb.pathID < (int)rb.path.size())
         return;
 
-    PathBuildResult built = rebuildPathToNearestUncoveredTarget(rb);
+    PathBuildResult built = rebuildPathToNearestUncoveredTarget(rb, &ctx);
 
     if (!built.success)
     {
@@ -287,11 +287,11 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
     enterAlertMode(ctx);
     ctx.alertFailCount++;
 
-    printRetryMessage("[WAIT] O ke tiep dang bi chan.", ctx.retryCount);
+    printRetryMessage("[WAIT] The next cell is blocked.", ctx.retryCount);
 
     if (ctx.retryCount > maxRetryCount())
     {
-        logBehavior("[STOP] Bi chan duong qua nhieu lan, dung mo phong.");
+        logBehavior("[STOP] Path was blocked too many times. Stopping simulation.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -301,7 +301,7 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] Khong co buoc an toan huu ich, chuyen sang HOLD_SAFE.");
+        logBehavior("[HOLD] No useful safe step is available. Switching to HOLD_SAFE.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -319,7 +319,7 @@ void handleRecharging(Robot &rb, CoverageContext &ctx)
 
     rechargeRobot(rb);
 
-    logBehavior("[RECHARGE] Da sac day pin.");
+    logBehavior("[RECHARGE] Battery is fully recharged.");
 
     clearRobotPath(rb);
     switchMissionMode(ctx, NORMAL);

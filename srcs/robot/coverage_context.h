@@ -2,6 +2,8 @@
 
 #include "types.h"
 
+#include <string>
+
 struct PendingRobotMove
 {
     bool active = false;
@@ -14,6 +16,10 @@ struct PendingRobotMove
     int totalTicks = 1;
 
     bool enteredUncoveredCell = false;
+
+    int pathIndexBefore = 0;
+    int pathLength = 0;
+    int edgeVisitCountBefore = 0;
 };
 
 struct CoverageContext
@@ -31,6 +37,16 @@ struct CoverageContext
     int actionCooldownTicks = 0;
     PendingRobotMove pendingMove;
 
+    // Debug/observability only. These fields do not affect planning.
+    int decisionCounter = 0;
+    int activeDecisionId = 0;
+    Cell activeDecisionTarget = {0, 0};
+    std::string activeDecisionPurpose = "coverage";
+    std::string activeDecisionReason = "unknown";
+    int activeDecisionCandidateCount = 0;
+    int activeDecisionCostToTarget = 0;
+    int activeDecisionCostTargetToBase = 0;
+
     bool coverageComplete = false;
     bool returnToTerminate = false;
     bool shouldStop = false;
@@ -40,3 +56,22 @@ struct CoverageContext
 void beginCoverageTick(CoverageContext &ctx);
 
 void setCoverageCooldown(CoverageContext &ctx, int ticks);
+
+void beginDecisionTrace(
+    CoverageContext &ctx,
+    const Robot &rb,
+    const std::string &purpose,
+    Cell target,
+    const std::string &reason,
+    int candidateCount = 0,
+    int costToTarget = 0,
+    int costTargetToBase = 0
+);
+
+void logDecisionPath(
+    const CoverageContext &ctx,
+    const Robot &rb,
+    const std::string &event,
+    bool success,
+    const std::string &details = ""
+);

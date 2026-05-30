@@ -1,5 +1,6 @@
 #pragma once
 
+#include "coverage_context.h"
 #include "types.h"
 
 struct PathBuildResult
@@ -20,8 +21,8 @@ void clearRobotPath(Robot &rb);
 
 bool isAtBase(const Robot &rb);
 
-PathBuildResult rebuildPathToBase(Robot &rb);
+PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx = nullptr);
 
-PathBuildResult rebuildSafeDetourPathToBase(Robot &rb);
+PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx = nullptr);
 
-PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb);
+PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *ctx = nullptr);
