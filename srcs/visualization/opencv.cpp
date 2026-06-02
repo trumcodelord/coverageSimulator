@@ -15,6 +15,7 @@ namespace
 {
     Mat lastFrame;
     bool showCoordinateHeaders = false;
+    bool testSpeedEnabled = false;
 
     void ensureParentDirectory(const std::string &path)
     {
@@ -25,8 +26,16 @@ namespace
             std::filesystem::create_directories(parent);
     }
 
+    bool isSpaceKey(int key)
+    {
+        return key == 32;
+    }
+
     void handleKeyboard(int key)
     {
+        if (key < 0)
+            return;
+
         if (key == 'c' || key == 'C')
         {
             showCoordinateHeaders = !showCoordinateHeaders;
@@ -36,6 +45,21 @@ namespace
                     ? "Coordinate headers enabled."
                     : "Coordinate headers disabled."
             );
+
+            return;
+        }
+
+        if (isSpaceKey(key))
+        {
+            testSpeedEnabled = !testSpeedEnabled;
+
+            pushHUDEvent(
+                testSpeedEnabled
+                    ? "Test speed enabled: 5x."
+                    : "Test speed disabled: 1x."
+            );
+
+            return;
         }
     }
 }
@@ -105,4 +129,14 @@ bool saveCurrentFrame(const std::string &filename)
 
     ensureParentDirectory(filename);
     return imwrite(filename, lastFrame);
+}
+
+int testSpeedMultiplier()
+{
+    return testSpeedEnabled ? 5 : 1;
+}
+
+bool isTestSpeedEnabled()
+{
+    return testSpeedEnabled;
 }

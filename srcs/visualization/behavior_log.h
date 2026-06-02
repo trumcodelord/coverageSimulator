@@ -101,6 +101,44 @@ inline std::string boolText(bool value)
     return value ? "true" : "false";
 }
 
+inline std::string kv(const std::string &key, const std::string &value)
+{
+    return key + "=" + value;
+}
+
+inline std::string kv(const std::string &key, const char *value)
+{
+    return key + "=" + std::string(value);
+}
+
+inline std::string kv(const std::string &key, int value)
+{
+    return key + "=" + std::to_string(value);
+}
+
+inline std::string kv(const std::string &key, long long value)
+{
+    return key + "=" + std::to_string(value);
+}
+
+inline std::string kv(const std::string &key, bool value)
+{
+    return key + "=" + boolText(value);
+}
+
+inline std::string kvCell(const std::string &key, Cell value)
+{
+    return key + "=" + cellText(value);
+}
+
+inline void appendDetail(std::string &details, const std::string &item)
+{
+    if (!details.empty())
+        details += " ";
+
+    details += item;
+}
+
 inline void logReadableEvent(
     const std::string &level,
     const std::string &domain,

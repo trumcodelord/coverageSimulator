@@ -19,8 +19,14 @@ namespace
 {
     void renderFrame(const Robot &rb, const CoverageContext &ctx)
     {
-        renderCoverageFrame(rb, ctx, true, renderDelayMs());
-        waitFrame(renderDelayMs());
+        int multiplier = testSpeedMultiplier();
+        int delay = renderDelayMs();
+
+        if (multiplier > 1)
+            delay = max(1, delay / multiplier);
+
+        renderCoverageFrame(rb, ctx, true, delay);
+        waitFrame(delay);
     }
 }
 
@@ -48,16 +54,20 @@ void executeCoverage(Robot &rb)
     {
         auto now = Clock::now();
 
-        accumulatedMs += chrono::duration_cast<chrono::milliseconds>(
+        int multiplier = testSpeedMultiplier();
+        long long elapsedMs = chrono::duration_cast<chrono::milliseconds>(
             now - lastTime
         ).count();
+
+        accumulatedMs += elapsedMs * multiplier;
 
         lastTime = now;
 
         int processedTicks = 0;
+        int maxTicksThisRender = maxCatchupTicksPerRender() * multiplier;
 
         while (accumulatedMs >= simTickMs() &&
-               processedTicks < maxCatchupTicksPerRender())
+               processedTicks < maxTicksThisRender)
         {
             {
                 lock_guard<mutex> lock(simMutex);
@@ -82,11 +92,11 @@ void executeCoverage(Robot &rb)
                 break;
         }
 
-        if (processedTicks == maxCatchupTicksPerRender())
+        if (processedTicks == maxTicksThisRender)
         {
             accumulatedMs = min(
                 accumulatedMs,
-                1LL * simTickMs() * maxCatchupTicksPerRender()
+                1LL * simTickMs() * maxTicksThisRender
             );
         }
 
