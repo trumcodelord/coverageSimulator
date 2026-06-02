@@ -55,7 +55,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            logBehavior("[ENERGY] Current energy is not enough to continue coverage. Recharging at base.");
+            logBehavior("[ENERGY] Short on energy. Recharging.");
             clearRobotPath(rb);
             switchMissionMode(ctx, RECHARGING);
             setCoverageCooldown(ctx, rechargeWaitTicks());

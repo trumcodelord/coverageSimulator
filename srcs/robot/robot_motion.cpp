@@ -5,6 +5,7 @@
 #include "dynamic_obstacle.h"
 #include "energy_model.h"
 #include "grid.h"
+#include "opencv.h"
 
 #include <string>
 
@@ -72,6 +73,36 @@ namespace
         return "follow_current_path";
     }
 
+    bool shouldOpportunisticallyRecharge(const Robot &rb, const CoverageContext &ctx)
+    {
+        return ctx.mode == NORMAL &&
+               rb.pos == rb.base &&
+               rb.energy < rb.maxEnergy;
+    }
+
+    void opportunisticRechargeAtBase(Robot &rb, CoverageContext &ctx)
+    {
+        int energyBefore = rb.energy;
+        rb.energy = rb.maxEnergy;
+
+        logRobotEvent(
+            "INFO",
+            "ENERGY",
+            "opportunistic_recharge",
+            "Robot happened to pass through base during coverage, so it conveniently recharges.",
+            rb,
+            ctx.mode,
+            "decision_id=" + std::to_string(ctx.activeDecisionId) +
+            " purpose=" + purposeForMove(ctx) +
+            " reason=incidental_base_pass_through" +
+            " energy_before=" + std::to_string(energyBefore) +
+            " energy_after=" + std::to_string(rb.energy) +
+            " base=" + cellText(rb.base)
+        );
+
+        pushHUDEvent("[RECHARGE] Tien the di ngang base, sac pin.");
+    }
+
     RobotMoveResult commitPendingMove(
         Robot &rb,
         CoverageContext &ctx
@@ -136,6 +167,9 @@ namespace
         }
 
         markCovered(rb.pos.r, rb.pos.c);
+
+        if (shouldOpportunisticallyRecharge(rb, ctx))
+            opportunisticRechargeAtBase(rb, ctx);
 
         int coveredCount = countCoveredCells();
         int rewardNewCell = move.enteredUncoveredCell ? 1 : 0;
@@ -262,27 +296,5 @@ RobotMoveResult moveRobotAlongCurrentPath(
     ctx.pendingMove.pathLength = (int)rb.path.size();
     ctx.pendingMove.edgeVisitCountBefore = edgeVisitCountBefore;
 
-    logRobotEvent(
-        "INFO",
-        "MOVE",
-        "start",
-        "Move started along current path; the step is not committed yet.",
-        rb,
-        ctx.mode,
-        "decision_id=" + std::to_string(ctx.activeDecisionId) +
-        " purpose=" + ctx.activeDecisionPurpose +
-        " reason=" + ctx.activeDecisionReason +
-        " from=" + cellText(prev) +
-        " to=" + cellText(next) +
-        " path_index=" + std::to_string(rb.pathID) +
-        " path_len=" + std::to_string((int)rb.path.size()) +
-        " path_goal=" + pathGoalText(ctx, rb) +
-        " next_cell_status=" + cellStatusText(result.enteredUncoveredCell) +
-        " edge_visit_count_before=" + std::to_string(edgeVisitCountBefore) +
-        " energy_before=" + energyText(rb) +
-        " move_cost=" + std::to_string(energyCost) +
-        " total_ticks=" + std::to_string(ctx.pendingMove.totalTicks)
-    );
-
-    return result;
+    return advancePendingRobotMove(rb, ctx);
 }

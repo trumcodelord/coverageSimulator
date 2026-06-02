@@ -274,7 +274,7 @@ void handleCoverageCompletion(
         enterReturnToBase(
             ctx,
             rb,
-            "[MISSION] Da phu het ban do. Quay ve base de ket thuc nhiem vu."
+            "[MISSION] Da phu het ban do. Quay ve base."
         );
     }
 }
