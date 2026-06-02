@@ -1,6 +1,6 @@
 #include "path_builder.h"
+#include "mission_policy.h"
 #include "behavior_log.h"
-#include "coverage_context.h"
 #include "energy_model.h"
 #include "planner.h"
 #include "path_safety.h"
@@ -82,17 +82,34 @@ namespace
         );
     }
 
-    int pathCost(const vector<Cell> &path)
+    int requiredEnergyForSafeVisit(int costToTarget, int costToBase)
     {
-        if (path.size() <= 1)
-            return 0;
+        return costToTarget + costToBase + returnEnergyMargin();
+    }
 
-        int total = 0;
-
-        for (int i = 1; i < (int)path.size(); i++)
-            total += terrainCostAt(path[i].r, path[i].c);
-
-        return total;
+    void logCandidateCheck(
+        const Robot &rb,
+        int rank,
+        const CoverageCandidate &candidate,
+        int costToBase,
+        const string &result,
+        const string &sentence
+    ) {
+        logEvent(
+            "DEBUG",
+            "TARGET",
+            "candidate_check",
+            rb,
+            modeName(NORMAL),
+            "rank=" + to_string(rank) +
+            " candidate=" + cellText(candidate.target) +
+            " cost_to_target=" + to_string(candidate.costFromRobot) +
+            " cost_to_base=" + to_string(costToBase) +
+            " required=" + to_string(requiredEnergyForSafeVisit(candidate.costFromRobot, costToBase)) +
+            " energy=" + energyText(rb) +
+            " result=" + result +
+            " note=" + sentence
+        );
     }
 }
 
@@ -117,7 +134,7 @@ static PathBuildResult makeAlreadyAtGoalResult(Robot &rb)
     return result;
 }
 
-PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
+PathBuildResult rebuildPathToBase(Robot &rb)
 {
     if (isAtBase(rb))
         return makeAlreadyAtGoalResult(rb);
@@ -140,29 +157,6 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
 
     rb.pathID = 1;
 
-    if (ctx != nullptr)
-    {
-        beginDecisionTrace(
-            *ctx,
-            rb,
-            "return",
-            rb.base,
-            "return_to_base",
-            1,
-            d[rb.base.r][rb.base.c],
-            0
-        );
-
-        logDecisionPath(
-            *ctx,
-            rb,
-            "return_path_built",
-            true,
-            "path_cost=" + std::to_string(pathCost(rb.path)) +
-            " first_step=" + cellText(rb.path[rb.pathID])
-        );
-    }
-
     if (!isNextPathCellFree(rb))
     {
         clearRobotPath(rb);
@@ -172,7 +166,7 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
     return {true, false, false, false};
 }
 
-PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
+PathBuildResult rebuildSafeDetourPathToBase(Robot &rb)
 {
     if (isAtBase(rb))
         return makeAlreadyAtGoalResult(rb);
@@ -202,33 +196,10 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
     rb.path = candidate;
     rb.pathID = 1;
 
-    if (ctx != nullptr)
-    {
-        beginDecisionTrace(
-            *ctx,
-            rb,
-            "return_detour",
-            rb.base,
-            "dynamic_obstacle_blocked_return",
-            1,
-            d[rb.base.r][rb.base.c],
-            0
-        );
-
-        logDecisionPath(
-            *ctx,
-            rb,
-            "return_detour_path_built",
-            true,
-            "path_cost=" + std::to_string(pathCost(rb.path)) +
-            " first_step=" + cellText(rb.path[rb.pathID])
-        );
-    }
-
     return {true, false, false, false};
 }
 
-PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *ctx)
+PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb)
 {
     vector<CoverageCandidate> candidates =
         collectReachableUncoveredCandidates(rb);
@@ -242,8 +213,16 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     bool foundCurrentEnergyLowTarget = false;
     bool foundMaxEnergyInfeasibleTarget = false;
 
+    const int DEBUG_CANDIDATE_LIMIT = 15;
+    int rank = 0;
+    int loggedCandidates = 0;
+    int rejectedCurrentEnergyLow = 0;
+    int rejectedMaxEnergyInfeasible = 0;
+
     for (const CoverageCandidate &candidate : candidates)
     {
+        rank++;
+
         int costToBase =
             estimateCostFromTargetToBase(candidate.target, rb);
 
@@ -254,6 +233,21 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             ))
         {
             foundMaxEnergyInfeasibleTarget = true;
+            rejectedMaxEnergyInfeasible++;
+
+            if (loggedCandidates < DEBUG_CANDIDATE_LIMIT)
+            {
+                logCandidateCheck(
+                    rb,
+                    rank,
+                    candidate,
+                    costToBase,
+                    "rejected_max_energy_infeasible",
+                    "full_battery_cannot_visit_and_return"
+                );
+                loggedCandidates++;
+            }
+
             continue;
         }
 
@@ -264,8 +258,53 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             ))
         {
             foundCurrentEnergyLowTarget = true;
+            rejectedCurrentEnergyLow++;
+
+            if (loggedCandidates < DEBUG_CANDIDATE_LIMIT)
+            {
+                logCandidateCheck(
+                    rb,
+                    rank,
+                    candidate,
+                    costToBase,
+                    "rejected_current_energy_low",
+                    "current_battery_cannot_visit_and_return"
+                );
+                loggedCandidates++;
+            }
+
             continue;
         }
+
+        if (loggedCandidates < DEBUG_CANDIDATE_LIMIT)
+        {
+            logCandidateCheck(
+                rb,
+                rank,
+                candidate,
+                costToBase,
+                "accepted_selected",
+                "nearest_feasible_uncovered_candidate"
+            );
+            loggedCandidates++;
+        }
+
+        logEvent(
+            "INFO",
+            "TARGET",
+            "candidate_summary",
+            rb,
+            modeName(NORMAL),
+            "candidates=" + to_string((int)candidates.size()) +
+            " selected_rank=" + to_string(rank) +
+            " logged_top=" + to_string(loggedCandidates) +
+            " rejected_current_energy_low=" + to_string(rejectedCurrentEnergyLow) +
+            " rejected_max_infeasible=" + to_string(rejectedMaxEnergyInfeasible) +
+            " selected=" + cellText(candidate.target) +
+            " selected_cost_to_target=" + to_string(candidate.costFromRobot) +
+            " selected_cost_to_base=" + to_string(costToBase) +
+            " selected_required=" + to_string(requiredEnergyForSafeVisit(candidate.costFromRobot, costToBase))
+        );
 
         dijkstra(rb.pos, d, trace);
 
@@ -281,7 +320,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
         {
             markCovered(candidate.target.r, candidate.target.c);
             clearRobotPath(rb);
-            return rebuildPathToNearestUncoveredTarget(rb);
+            return rebuildPathToNearestUncoveredTarget(rb, nullptr);
         }
 
         rb.pathID = 1;
@@ -290,29 +329,6 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
         {
             clearRobotPath(rb);
             return {};
-        }
-
-        if (ctx != nullptr)
-        {
-            beginDecisionTrace(
-                *ctx,
-                rb,
-                "coverage",
-                candidate.target,
-                "nearest_uncovered_energy_feasible",
-                (int)candidates.size(),
-                candidate.costFromRobot,
-                costToBase
-            );
-
-            logDecisionPath(
-                *ctx,
-                rb,
-                "coverage_path_built",
-                true,
-                "path_cost=" + std::to_string(pathCost(rb.path)) +
-                " first_step=" + cellText(rb.path[rb.pathID])
-            );
         }
 
         return {true, false, false, false};
@@ -325,30 +341,5 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     result.alreadyAtGoal = false;
     result.currentEnergyLow = foundCurrentEnergyLowTarget;
     result.energyInfeasible = !foundCurrentEnergyLowTarget && foundMaxEnergyInfeasibleTarget;
-
-    if (ctx != nullptr)
-    {
-        Cell target = candidates.empty() ? rb.pos : candidates.front().target;
-        beginDecisionTrace(
-            *ctx,
-            rb,
-            "coverage",
-            target,
-            result.currentEnergyLow ? "current_energy_low_for_candidates" : "max_energy_infeasible_for_candidates",
-            (int)candidates.size(),
-            candidates.empty() ? 0 : candidates.front().costFromRobot,
-            0
-        );
-
-        logDecisionPath(
-            *ctx,
-            rb,
-            "coverage_path_failed",
-            false,
-            "current_energy_low=" + boolText(result.currentEnergyLow) +
-            " energy_infeasible=" + boolText(result.energyInfeasible)
-        );
-    }
-
     return result;
 }
