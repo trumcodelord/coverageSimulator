@@ -1,5 +1,7 @@
 #include "energy_model.h"
 
+#include "grid.h"
+
 #include <algorithm>
 #include <cstdlib>
 
@@ -49,7 +51,14 @@ int computeMoveEnergyCost(
     RobotMode mode,
     const EnergyCostConfig &config
 ) {
-    int cost = config.baseMoveCost;
+    int terrainEntryCost = terrainCostAt(next.r, next.c);
+
+    if (terrainEntryCost >= INF)
+        return INF;
+
+    // Terrain cost is the main movement cost.
+    // baseMoveCost remains a lower bound so legacy cost-1 maps behave exactly as before.
+    int cost = max(config.baseMoveCost, terrainEntryCost);
 
     if (directionChanged(rb, next))
         cost += config.turnCost;

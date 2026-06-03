@@ -13,7 +13,7 @@ void dijkstra(Cell start, int d[1001][1001], Cell trace[1001][1001])
         for (int j = 1; j <= cols; j++)
         {
             d[i][j] = INF;
-            trace[i][j]= {0,0};
+            trace[i][j] = {0, 0};
         }
 
     priority_queue<pair<int, Cell>, vector<pair<int, Cell>>, greater<pair<int, Cell>>> pq;
@@ -28,11 +28,18 @@ void dijkstra(Cell start, int d[1001][1001], Cell trace[1001][1001])
         int du = pq.top().first;
         pq.pop();
 
-        if (du != d[u.r][u.c]) continue;
+        if (du != d[u.r][u.c])
+            continue;
 
         for (Cell v : getNeighbors(u))
         {
-            int uv = du + 1;
+            int stepCost = terrainCostAt(v.r, v.c);
+
+            if (stepCost >= INF)
+                continue;
+
+            int uv = du + stepCost;
+
             if (uv < d[v.r][v.c])
             {
                 d[v.r][v.c] = uv;
@@ -80,7 +87,6 @@ Cell findNearestUncovered(Cell start)
     {
         for (int j = 1; j <= cols; j++)
         {
-
             if (!blocked[i][j] && !covered[i][j] && d[i][j] < best)
             {
                 best = d[i][j];

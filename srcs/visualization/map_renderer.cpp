@@ -17,6 +17,46 @@ namespace
         return r == start.r && c == start.c;
     }
 
+    Scalar blendColor(Scalar base, Scalar overlay, double alpha)
+    {
+        alpha = std::max(0.0, std::min(1.0, alpha));
+
+        return Scalar(
+            base[0] * (1.0 - alpha) + overlay[0] * alpha,
+            base[1] * (1.0 - alpha) + overlay[1] * alpha,
+            base[2] * (1.0 - alpha) + overlay[2] * alpha
+        );
+    }
+
+    int grayForTerrainCost(int cost)
+    {
+        if (cost <= 1)
+            return 245;
+
+        if (cost == 2)
+            return 215;
+
+        if (cost == 3)
+            return 180;
+
+        if (cost == 4)
+            return 155;
+
+        if (cost == 5)
+            return 130;
+
+        return std::max(80, 130 - std::min(40, (cost - 5) * 8));
+    }
+
+    Scalar terrainColorForCell(int r, int c)
+    {
+        if (blocked[r][c])
+            return Scalar(45, 45, 45);
+
+        int gray = grayForTerrainCost(terrainCostAt(r, c));
+        return Scalar(gray, gray, gray);
+    }
+
     void paintBaseMarker(Mat &canvas, Point tl, Point br)
     {
         int s = visualCellSize();
@@ -65,18 +105,23 @@ void paintMapCells(Mat &canvas, bool showLogicalCoverage)
     {
         for (int c = 1; c <= cols; c++)
         {
-            Scalar color;
+            Scalar color = terrainColorForCell(r, c);
 
-            if (blocked[r][c])
-                color = Scalar(160, 160, 160);
-            else if (isBaseCell(r, c))
-                color = Scalar(255, 235, 180);
-            else if (dynamicBlocked[r][c])
-                color = Scalar(180, 105, 255);
-            else if (showLogicalCoverage && covered[r][c])
-                color = Scalar(220, 245, 220);
-            else
-                color = Scalar(255, 255, 255);
+            if (!blocked[r][c] && dynamicBlocked[r][c])
+            {
+                color = blendColor(color, Scalar(180, 105, 255), 0.65);
+            }
+            else if (!blocked[r][c] && showLogicalCoverage && covered[r][c])
+            {
+                // Keep terrain grayscale visible; coverage is a green overlay.
+                color = blendColor(color, Scalar(80, 210, 80), 0.28);
+            }
+
+            if (!blocked[r][c] && isBaseCell(r, c))
+            {
+                // Keep the base recognizable without hiding the terrain layer.
+                color = blendColor(color, Scalar(255, 235, 180), 0.20);
+            }
 
             Point tl = visualCellTopLeft(r, c);
             Point br(
