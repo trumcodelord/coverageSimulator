@@ -51,7 +51,7 @@ namespace
         {
             for (int j = 1; j <= cols; j++)
             {
-                if (blocked[i][j] || covered[i][j])
+                if (!isCoverageTargetCell(i, j) || covered[i][j])
                     continue;
 
                 if (d[i][j] >= INF)
@@ -99,28 +99,6 @@ namespace
         return (long long)costToTarget + (long long)costToBase;
     }
 
-    long long requiredEnergyWithMargin(int costToTarget, int costToBase)
-    {
-        if (costToTarget >= INF || costToBase >= INF)
-            return INF;
-
-        int margin = returnMarginForCost(costToBase);
-        if (margin >= INF)
-            return INF;
-
-        return (long long)costToTarget + (long long)costToBase + (long long)margin;
-    }
-
-    long long energySlack(const Robot &rb, int costToTarget, int costToBase)
-    {
-        long long required = requiredEnergyWithMargin(costToTarget, costToBase);
-
-        if (required >= INF)
-            return -INF;
-
-        return (long long)rb.energy - required;
-    }
-
     int pathCost(const vector<Cell> &path)
     {
         if (path.size() <= 1)
@@ -143,7 +121,7 @@ namespace
         {
             Cell p = path[i];
 
-            if (blocked[p.r][p.c])
+            if (isStaticBlocked(p.r, p.c))
                 stats.blockedCells++;
 
             if (covered[p.r][p.c])
@@ -153,42 +131,6 @@ namespace
         }
 
         return stats;
-    }
-
-    const int CELL_REVISIT_PENALTY = 2;
-
-    int revisitPenaltyForStats(const PathValueStats &stats)
-    {
-        return stats.revisits * CELL_REVISIT_PENALTY;
-    }
-
-    int targetScoreForStats(
-        const CoverageCandidate &candidate,
-        const PathValueStats &stats
-    ) {
-        return candidate.costFromRobot + revisitPenaltyForStats(stats);
-    }
-
-    bool isBetterTargetScore(
-        int score,
-        const CoverageCandidate &candidate,
-        int bestScore,
-        const CoverageCandidate &bestCandidate,
-        bool hasBest
-    ) {
-        if (!hasBest)
-            return true;
-
-        if (score != bestScore)
-            return score < bestScore;
-
-        if (candidate.costFromRobot != bestCandidate.costFromRobot)
-            return candidate.costFromRobot < bestCandidate.costFromRobot;
-
-        if (candidate.target.r != bestCandidate.target.r)
-            return candidate.target.r < bestCandidate.target.r;
-
-        return candidate.target.c < bestCandidate.target.c;
     }
 
     string compactPathText(const vector<Cell> &path, int limit = 20)
@@ -223,10 +165,7 @@ namespace
         bool currentEnergyFeasible,
         const string &result,
         const string &failedConstraint,
-        const string &note,
-        const PathValueStats *stats = nullptr,
-        int revisitPenalty = 0,
-        int targetScore = INF
+        const string &note
     ) {
         string details;
         appendDetail(details, kv("decision_id", decisionId));
@@ -237,19 +176,6 @@ namespace
         appendDetail(details, kv("cost_to_target", candidate.costFromRobot));
         appendDetail(details, kv("cost_to_base", costToBase));
         appendDetail(details, kv("required_lower_bound", requiredEnergyLowerBound(candidate.costFromRobot, costToBase)));
-        appendDetail(details, kv("return_margin", returnMarginForCost(costToBase)));
-        appendDetail(details, kv("required_with_margin", requiredEnergyWithMargin(candidate.costFromRobot, costToBase)));
-        appendDetail(details, kv("energy_slack", energySlack(rb, candidate.costFromRobot, costToBase)));
-
-        if (stats != nullptr)
-        {
-            appendDetail(details, kv("path_cost", stats->pathCost));
-            appendDetail(details, kv("new_cells", stats->newCells));
-            appendDetail(details, kv("revisits", stats->revisits));
-            appendDetail(details, kv("revisit_penalty", revisitPenalty));
-            appendDetail(details, kv("target_score", targetScore));
-        }
-
         appendDetail(details, kv("full_battery_feasible", fullBatteryFeasible));
         appendDetail(details, kv("current_energy_feasible", currentEnergyFeasible));
         appendDetail(details, kv("result", result));
@@ -272,37 +198,24 @@ namespace
         int candidateCount,
         int selectedRank,
         int loggedCandidates,
-        int feasibleCandidates,
         int rejectedCurrentEnergyLow,
         int rejectedMaxEnergyInfeasible,
         const CoverageCandidate &selected,
         int selectedCostToBase,
         bool selectedFullBatteryFeasible,
-        bool selectedCurrentEnergyFeasible,
-        const PathValueStats &selectedStats,
-        int selectedRevisitPenalty,
-        int selectedScore
+        bool selectedCurrentEnergyFeasible
     ) {
         string details;
         appendDetail(details, kv("decision_id", decisionId));
         appendDetail(details, kv("candidates", candidateCount));
         appendDetail(details, kv("selected_rank", selectedRank));
         appendDetail(details, kv("logged_top", loggedCandidates));
-        appendDetail(details, kv("feasible_candidates", feasibleCandidates));
         appendDetail(details, kv("rejected_current_energy_low", rejectedCurrentEnergyLow));
         appendDetail(details, kv("rejected_max_energy_infeasible", rejectedMaxEnergyInfeasible));
         appendDetail(details, kvCell("selected", selected.target));
         appendDetail(details, kv("selected_cost_to_target", selected.costFromRobot));
         appendDetail(details, kv("selected_cost_to_base", selectedCostToBase));
         appendDetail(details, kv("selected_required_lower_bound", requiredEnergyLowerBound(selected.costFromRobot, selectedCostToBase)));
-        appendDetail(details, kv("selected_return_margin", returnMarginForCost(selectedCostToBase)));
-        appendDetail(details, kv("selected_required_with_margin", requiredEnergyWithMargin(selected.costFromRobot, selectedCostToBase)));
-        appendDetail(details, kv("selected_energy_slack", energySlack(rb, selected.costFromRobot, selectedCostToBase)));
-        appendDetail(details, kv("selected_path_cost", selectedStats.pathCost));
-        appendDetail(details, kv("selected_new_cells", selectedStats.newCells));
-        appendDetail(details, kv("selected_revisits", selectedStats.revisits));
-        appendDetail(details, kv("selected_revisit_penalty", selectedRevisitPenalty));
-        appendDetail(details, kv("selected_score", selectedScore));
         appendDetail(details, kv("selected_full_battery_feasible", selectedFullBatteryFeasible));
         appendDetail(details, kv("selected_current_energy_feasible", selectedCurrentEnergyFeasible));
 
@@ -333,8 +246,6 @@ namespace
         appendDetail(details, kv("new_cells", stats.newCells));
         appendDetail(details, kv("revisits", stats.revisits));
         appendDetail(details, kv("blocked_cells", stats.blockedCells));
-        appendDetail(details, kv("revisit_penalty", revisitPenaltyForStats(stats)));
-        appendDetail(details, kv("target_score", targetScoreForStats(candidate, stats)));
 
         if (!rb.path.empty())
         {
@@ -362,9 +273,7 @@ namespace
 
         appendDetail(valueDetails, kv("reward_new_cells", stats.newCells));
         appendDetail(valueDetails, kv("penalty_revisits", stats.revisits));
-        appendDetail(valueDetails, kv("penalty_revisit_score", revisitPenaltyForStats(stats)));
         appendDetail(valueDetails, kv("penalty_energy", stats.pathCost));
-        appendDetail(valueDetails, kv("target_score", targetScoreForStats(candidate, stats)));
         appendDetail(valueDetails, kv("penalty_blocked_cells", stats.blockedCells));
         appendDetail(valueDetails, kv("result", "accepted"));
 
@@ -532,23 +441,8 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     int loggedCandidates = 0;
     int rejectedCurrentEnergyLow = 0;
     int rejectedMaxEnergyInfeasible = 0;
-    int feasibleCandidates = 0;
     int decisionId = ctx == nullptr ? 0 : ctx->activeDecisionId;
 
-    bool hasBestCandidate = false;
-    int bestRank = 0;
-    CoverageCandidate bestCandidate;
-    int bestCostToBase = INF;
-    bool bestFullBatteryFeasible = false;
-    bool bestCurrentEnergyFeasible = false;
-    vector<Cell> bestPath;
-    PathValueStats bestStats;
-    int bestRevisitPenalty = 0;
-    int bestScore = INF;
-
-    // collectReachableUncoveredCandidates() leaves d/trace rooted at rb.pos.
-    // estimateCostFromTargetToBase() runs Dijkstra from each candidate, so we
-    // restore the robot-rooted Dijkstra before tracing a feasible candidate path.
     for (const CoverageCandidate &candidate : candidates)
     {
         rank++;
@@ -618,42 +512,21 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             continue;
         }
 
-        dijkstra(rb.pos, d, trace);
-        vector<Cell> candidatePath = tracePath(rb.pos, candidate.target, trace);
-
-        if (candidatePath.empty())
+        if (ctx != nullptr)
         {
-            if (loggedCandidates < DEBUG_CANDIDATE_LIMIT)
-            {
-                logCandidateCheck(
-                    rb,
-                    decisionId,
-                    rank,
-                    candidate,
-                    costToBase,
-                    fullBatteryFeasible,
-                    currentEnergyFeasible,
-                    "rejected_empty_path",
-                    "path_trace",
-                    "candidate_path_empty_after_feasibility"
-                );
-                loggedCandidates++;
-            }
+            beginDecisionTrace(
+                *ctx,
+                rb,
+                "coverage",
+                candidate.target,
+                "nearest_uncovered_energy_feasible",
+                (int)candidates.size(),
+                candidate.costFromRobot,
+                costToBase
+            );
 
-            continue;
+            decisionId = ctx->activeDecisionId;
         }
-
-        if ((int)candidatePath.size() <= 1)
-        {
-            markCovered(candidate.target.r, candidate.target.c);
-            clearRobotPath(rb);
-            return rebuildPathToNearestUncoveredTarget(rb, ctx);
-        }
-
-        PathValueStats stats = evaluatePathValue(candidatePath);
-        int revisitPenalty = revisitPenaltyForStats(stats);
-        int targetScore = targetScoreForStats(candidate, stats);
-        feasibleCandidates++;
 
         if (loggedCandidates < DEBUG_CANDIDATE_LIMIT)
         {
@@ -665,90 +538,44 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                 costToBase,
                 fullBatteryFeasible,
                 currentEnergyFeasible,
-                "feasible_scored",
+                "accepted_selected",
                 "none",
-                "candidate_feasible_score_evaluated",
-                &stats,
-                revisitPenalty,
-                targetScore
+                "nearest_feasible_uncovered_candidate"
             );
             loggedCandidates++;
         }
-
-        if (isBetterTargetScore(
-                targetScore,
-                candidate,
-                bestScore,
-                bestCandidate,
-                hasBestCandidate
-            ))
-        {
-            hasBestCandidate = true;
-            bestRank = rank;
-            bestCandidate = candidate;
-            bestCostToBase = costToBase;
-            bestFullBatteryFeasible = fullBatteryFeasible;
-            bestCurrentEnergyFeasible = currentEnergyFeasible;
-            bestPath = candidatePath;
-            bestStats = stats;
-            bestRevisitPenalty = revisitPenalty;
-            bestScore = targetScore;
-        }
-    }
-
-    if (hasBestCandidate)
-    {
-        if (ctx != nullptr)
-        {
-            beginDecisionTrace(
-                *ctx,
-                rb,
-                "coverage",
-                bestCandidate.target,
-                "lowest_revisit_penalty_energy_feasible",
-                (int)candidates.size(),
-                bestCandidate.costFromRobot,
-                bestCostToBase
-            );
-
-            decisionId = ctx->activeDecisionId;
-        }
-
-        logCandidateCheck(
-            rb,
-            decisionId,
-            bestRank,
-            bestCandidate,
-            bestCostToBase,
-            bestFullBatteryFeasible,
-            bestCurrentEnergyFeasible,
-            "accepted_selected",
-            "none",
-            "lowest_score_feasible_uncovered_candidate",
-            &bestStats,
-            bestRevisitPenalty,
-            bestScore
-        );
 
         logCandidateSummary(
             rb,
             decisionId,
             (int)candidates.size(),
-            bestRank,
+            rank,
             loggedCandidates,
-            feasibleCandidates,
             rejectedCurrentEnergyLow,
             rejectedMaxEnergyInfeasible,
-            bestCandidate,
-            bestCostToBase,
-            bestFullBatteryFeasible,
-            bestCurrentEnergyFeasible,
-            bestStats,
-            bestRevisitPenalty,
-            bestScore
+            candidate,
+            costToBase,
+            fullBatteryFeasible,
+            currentEnergyFeasible
         );
 
-        rb.path = bestPath;
+        dijkstra(rb.pos, d, trace);
+
+        rb.path = tracePath(rb.pos, candidate.target, trace);
+
+        if (rb.path.empty())
+        {
+            clearRobotPath(rb);
+            continue;
+        }
+
+        if ((int)rb.path.size() <= 1)
+        {
+            markCovered(candidate.target.r, candidate.target.c);
+            clearRobotPath(rb);
+            return rebuildPathToNearestUncoveredTarget(rb, ctx);
+        }
+
         rb.pathID = 1;
 
         if (!isNextPathCellFree(rb))
@@ -770,14 +597,12 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                 " new_cells=" + std::to_string(stats.newCells) +
                 " revisits=" + std::to_string(stats.revisits) +
                 " blocked_cells=" + std::to_string(stats.blockedCells) +
-                " revisit_penalty=" + std::to_string(revisitPenaltyForStats(stats)) +
-                " target_score=" + std::to_string(targetScoreForStats(bestCandidate, stats)) +
                 " first_step=" + cellText(rb.path[rb.pathID]) +
                 " path=" + compactPathText(rb.path)
             );
         }
 
-        logCoveragePathValue(ctx, rb, bestCandidate);
+        logCoveragePathValue(ctx, rb, candidate);
 
         return {true, false, false, false};
     }
@@ -812,8 +637,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             "current_energy_low=" + boolText(result.currentEnergyLow) +
             " energy_infeasible=" + boolText(result.energyInfeasible) +
             " rejected_current_energy_low=" + std::to_string(rejectedCurrentEnergyLow) +
-            " rejected_max_energy_infeasible=" + std::to_string(rejectedMaxEnergyInfeasible) +
-            " feasible_candidates=" + std::to_string(feasibleCandidates)
+            " rejected_max_energy_infeasible=" + std::to_string(rejectedMaxEnergyInfeasible)
         );
     }
 

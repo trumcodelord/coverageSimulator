@@ -51,7 +51,7 @@ int computeMoveEnergyCost(
     RobotMode mode,
     const EnergyCostConfig &config
 ) {
-    int terrainEntryCost = terrainCostAt(next.r, next.c);
+    int terrainEntryCost = effectiveTerrainCostAt(next.r, next.c);
 
     if (terrainEntryCost >= INF)
         return INF;

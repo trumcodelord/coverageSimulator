@@ -22,7 +22,7 @@ bool isNearDynamicObstacle(Cell p, int radius)
             if (manhattan > radius)
                 continue;
 
-            if (dynamicBlocked[r][c])
+            if (isDynamicBlockedCell(r, c))
                 return true;
         }
     }

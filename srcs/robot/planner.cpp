@@ -33,7 +33,7 @@ void dijkstra(Cell start, int d[1001][1001], Cell trace[1001][1001])
 
         for (Cell v : getNeighbors(u))
         {
-            int stepCost = terrainCostAt(v.r, v.c);
+            int stepCost = effectiveTerrainCostAt(v.r, v.c);
 
             if (stepCost >= INF)
                 continue;
@@ -87,7 +87,7 @@ Cell findNearestUncovered(Cell start)
     {
         for (int j = 1; j <= cols; j++)
         {
-            if (!blocked[i][j] && !covered[i][j] && d[i][j] < best)
+            if (isCoverageTargetCell(i, j) && !covered[i][j] && d[i][j] < best)
             {
                 best = d[i][j];
                 target = {i, j};

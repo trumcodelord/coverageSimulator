@@ -50,10 +50,10 @@ namespace
 
     Scalar terrainColorForCell(int r, int c)
     {
-        if (blocked[r][c])
+        if (isStaticBlocked(r, c))
             return Scalar(45, 45, 45);
 
-        int gray = grayForTerrainCost(terrainCostAt(r, c));
+        int gray = grayForTerrainCost(baseTerrainCostAt(r, c));
         return Scalar(gray, gray, gray);
     }
 
@@ -107,17 +107,17 @@ void paintMapCells(Mat &canvas, bool showLogicalCoverage)
         {
             Scalar color = terrainColorForCell(r, c);
 
-            if (!blocked[r][c] && dynamicBlocked[r][c])
+            if (isCoverageTargetCell(r, c) && isDynamicBlockedCell(r, c))
             {
                 color = blendColor(color, Scalar(180, 105, 255), 0.65);
             }
-            else if (!blocked[r][c] && showLogicalCoverage && covered[r][c])
+            else if (isCoverageTargetCell(r, c) && showLogicalCoverage && covered[r][c])
             {
                 // Keep terrain grayscale visible; coverage is a green overlay.
                 color = blendColor(color, Scalar(80, 210, 80), 0.28);
             }
 
-            if (!blocked[r][c] && isBaseCell(r, c))
+            if (isCoverageTargetCell(r, c) && isBaseCell(r, c))
             {
                 // Keep the base recognizable without hiding the terrain layer.
                 color = blendColor(color, Scalar(255, 235, 180), 0.20);
@@ -131,7 +131,7 @@ void paintMapCells(Mat &canvas, bool showLogicalCoverage)
 
             rectangle(canvas, tl, br, color, FILLED);
 
-            if (isBaseCell(r, c) && !blocked[r][c])
+            if (isBaseCell(r, c) && isCoverageTargetCell(r, c))
                 paintBaseMarker(canvas, tl, br);
         }
     }

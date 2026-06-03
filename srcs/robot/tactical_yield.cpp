@@ -13,7 +13,7 @@ static bool isNearDynamicObstacle(Cell p)
             if (!inBounds(r, c))
                 continue;
 
-            if (dynamicBlocked[r][c])
+            if (isDynamicBlockedCell(r, c))
                 return true;
         }
     }

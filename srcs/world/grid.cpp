@@ -15,9 +15,48 @@ bool inBounds(int r, int c)
     return 1 <= r && r <= rows && 1 <= c && c <= cols;
 }
 
+bool isStaticBlocked(int r, int c)
+{
+    if (!inBounds(r, c))
+        return true;
+
+    return blocked[r][c] || terrainCost[r][c] >= INF;
+}
+
+bool isDynamicBlockedCell(int r, int c)
+{
+    return inBounds(r, c) && dynamicBlocked[r][c];
+}
+
+bool isBlockedCell(int r, int c)
+{
+    return !inBounds(r, c) ||
+           isStaticBlocked(r, c) ||
+           isDynamicBlockedCell(r, c);
+}
+
+int baseTerrainCostAt(int r, int c)
+{
+    if (!inBounds(r, c))
+        return INF;
+
+    if (isStaticBlocked(r, c))
+        return INF;
+
+    return terrainCost[r][c];
+}
+
+int effectiveTerrainCostAt(int r, int c)
+{
+    if (isBlockedCell(r, c))
+        return INF;
+
+    return terrainCost[r][c];
+}
+
 bool isFree(int r, int c)
 {
-    return inBounds(r, c) && !blocked[r][c] && !dynamicBlocked[r][c];
+    return effectiveTerrainCostAt(r, c) < INF;
 }
 
 bool isCovered(int r, int c)
@@ -25,17 +64,14 @@ bool isCovered(int r, int c)
     return inBounds(r, c) && covered[r][c];
 }
 
-int terrainCostAt(int r, int c)
+bool isCoverageTargetCell(int r, int c)
 {
-    if (!inBounds(r, c))
-        return INF;
-
-    return terrainCost[r][c];
+    return inBounds(r, c) && !isStaticBlocked(r, c);
 }
 
-static bool isCoverageTargetCell(int r, int c)
+int terrainCostAt(int r, int c)
 {
-    return inBounds(r, c) && !blocked[r][c];
+    return baseTerrainCostAt(r, c);
 }
 
 void markCovered(int r, int c)

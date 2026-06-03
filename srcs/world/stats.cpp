@@ -78,7 +78,7 @@ CoverageStats collectStats(const Robot& rb)
             if (covered[i][j])
                 s.coveredCells++;
 
-            if (dynamicBlocked[i][j])
+            if (isDynamicBlockedCell(i, j))
                 s.dynamicBlockedCells++;
         }
     }

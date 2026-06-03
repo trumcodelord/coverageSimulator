@@ -39,7 +39,7 @@ bool isForbiddenDynamicObstacleCell(int r, int c)
     if (!inBounds(r, c))
         return true;
 
-    if (blocked[r][c])
+    if (isStaticBlocked(r, c))
         return true;
 
     // The robot base / command station is a protected operational zone.
@@ -106,7 +106,7 @@ static bool canPlace(int r, int c)
     if (isForbiddenDynamicObstacleCell(r, c))
         return false;
 
-    if (dynamicBlocked[r][c])
+    if (isDynamicBlockedCell(r, c))
         return false;
 
     return true;

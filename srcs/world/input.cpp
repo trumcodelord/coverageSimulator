@@ -146,7 +146,7 @@ namespace
     void setWallCell(int r, int c)
     {
         blocked[r][c] = true;
-        terrainCost[r][c] = 1;
+        terrainCost[r][c] = INF;
     }
 
     int parseTerrainCost(const string &token)
@@ -179,7 +179,7 @@ namespace
 
         for (int i = 1; i <= rows; i++)
             for (int j = 1; j <= cols; j++)
-                if (!blocked[i][j])
+                if (isCoverageTargetCell(i, j))
                     initialFreeCells++;
     }
 
@@ -188,7 +188,7 @@ namespace
         if (!inBounds(r, c))
             throw runtime_error(name + " nam ngoai map.");
 
-        if (blocked[r][c])
+        if (isStaticBlocked(r, c))
             throw runtime_error(name + " khong duoc nam tren wall.");
     }
 
@@ -214,13 +214,9 @@ namespace
                     throw runtime_error("So luong token tren mot dong map khong du.");
 
                 if (token == "W" || token == "w")
-                {
                     setWallCell(i, j);
-                }
                 else
-                {
                     setFreeTerrainCell(i, j, parseTerrainCost(token));
-                }
             }
 
             if (ss >> token)
