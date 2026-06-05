@@ -17,6 +17,12 @@ using namespace cv;
 
 namespace
 {
+    Mat trailLayer;
+    Mat trailMask;
+    int cachedTrailSize = 0;
+    int cachedCellSize = 0;
+    Size cachedCanvasSize;
+
     Scalar getTrailColor(int cnt)
     {
         if (cnt <= 1)
@@ -38,6 +44,126 @@ namespace
             r = 0;
 
         return Scalar(0, 0, r);
+    }
+
+    void resetTrailCache(const Mat &canvas)
+    {
+        trailLayer = Mat::zeros(canvas.size(), canvas.type());
+        trailMask = Mat::zeros(canvas.size(), CV_8UC1);
+        cachedTrailSize = 0;
+        cachedCellSize = visualCellSize();
+        cachedCanvasSize = canvas.size();
+    }
+
+    bool trailCacheNeedsReset(const Mat &canvas, const Robot &rb)
+    {
+        if (trailLayer.empty() || trailMask.empty())
+            return true;
+
+        if (cachedCanvasSize != canvas.size())
+            return true;
+
+        if (cachedCellSize != visualCellSize())
+            return true;
+
+        if (cachedTrailSize > (int)rb.trail.size())
+            return true;
+
+        return false;
+    }
+
+    void ensureTrailCache(const Mat &canvas, const Robot &rb)
+    {
+        if (trailCacheNeedsReset(canvas, rb))
+            resetTrailCache(canvas);
+    }
+
+    void drawTrailSegmentOnCache(const Robot &rb, int index)
+    {
+        if (index <= 0 || index >= (int)rb.trail.size())
+            return;
+
+        int trailThickness = max(1, visualCellSize() / 18);
+        double tipLength = 0.18;
+
+        Cell a = rb.trail[index - 1];
+        Cell b = rb.trail[index];
+
+        Point p1 = visualCellCenter(a.r, a.c);
+        Point p2 = visualCellCenter(b.r, b.c);
+
+        Edge e(a, b);
+        int cnt = 1;
+
+        auto it = rb.edgeCount.find(e);
+
+        if (it != rb.edgeCount.end())
+            cnt = it->second;
+
+        Scalar color = getTrailColor(cnt);
+
+        arrowedLine(
+            trailLayer,
+            p1,
+            p2,
+            Scalar(80, 80, 80),
+            trailThickness + 1,
+            LINE_AA,
+            0,
+            tipLength
+        );
+
+        arrowedLine(
+            trailMask,
+            p1,
+            p2,
+            Scalar(255),
+            trailThickness + 2,
+            LINE_AA,
+            0,
+            tipLength
+        );
+
+        arrowedLine(
+            trailLayer,
+            p1,
+            p2,
+            color,
+            trailThickness,
+            LINE_AA,
+            0,
+            tipLength
+        );
+
+        arrowedLine(
+            trailMask,
+            p1,
+            p2,
+            Scalar(255),
+            trailThickness + 1,
+            LINE_AA,
+            0,
+            tipLength
+        );
+    }
+
+    void updateTrailCache(const Mat &canvas, const Robot &rb)
+    {
+        ensureTrailCache(canvas, rb);
+
+        if ((int)rb.trail.size() < 2)
+        {
+            cachedTrailSize = (int)rb.trail.size();
+            return;
+        }
+
+        if (cachedTrailSize < 1)
+            cachedTrailSize = 1;
+
+        for (int i = cachedTrailSize; i < (int)rb.trail.size(); i++)
+            drawTrailSegmentOnCache(rb, i);
+
+        cachedTrailSize = (int)rb.trail.size();
     }
 
     double vehicleRotationAngleDeg(const DynamicObstacle &obs)
@@ -266,54 +392,12 @@ void paintPath(Mat &canvas, const Robot &rb)
 
 void paintTrail(Mat &canvas, const Robot &rb)
 {
-    if (rb.trail.size() < 2)
+    updateTrailCache(canvas, rb);
+
+    if (trailLayer.empty() || trailMask.empty())
         return;
 
-    int trailThickness = max(1, visualCellSize() / 18);
-    double tipLength = 0.18;
-
-    // Draw newest trail segments first and older segments last.
-    // This keeps earlier arrows visible when a later revisit overlaps them.
-    for (int i = (int)rb.trail.size() - 1; i >= 1; i--)
-    {
-        Cell a = rb.trail[i - 1];
-        Cell b = rb.trail[i];
-
-        Point p1 = visualCellCenter(a.r, a.c);
-        Point p2 = visualCellCenter(b.r, b.c);
-
-        Edge e(a, b);
-        int cnt = 1;
-
-        auto it = rb.edgeCount.find(e);
-
-        if (it != rb.edgeCount.end())
-            cnt = it->second;
-
-        Scalar color = getTrailColor(cnt);
-
-        arrowedLine(
-            canvas,
-            p1,
-            p2,
-            Scalar(80, 80, 80),
-            trailThickness + 1,
-            LINE_AA,
-            0,
-            tipLength
-        );
-
-        arrowedLine(
-            canvas,
-            p1,
-            p2,
-            color,
-            trailThickness,
-            LINE_AA,
-            0,
-            tipLength
-        );
-    }
+    trailLayer.copyTo(canvas, trailMask);
 }
 
 void paintDynamicObstacles(Mat &canvas)
