@@ -130,7 +130,6 @@ namespace
         for (int i = 1; i <= rows; i++)
             for (int j = 1; j <= cols; j++)
             {
-                blocked[i][j] = false;
                 dynamicBlocked[i][j] = false;
                 covered[i][j] = false;
                 terrainCost[i][j] = 1;
@@ -139,13 +138,11 @@ namespace
 
     void setFreeTerrainCell(int r, int c, int cost)
     {
-        blocked[r][c] = false;
         terrainCost[r][c] = cost;
     }
 
     void setWallCell(int r, int c)
     {
-        blocked[r][c] = true;
         terrainCost[r][c] = INF;
     }
 

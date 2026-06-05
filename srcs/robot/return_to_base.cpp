@@ -52,7 +52,7 @@ namespace
                 if (!inBounds(v.r, v.c))
                     continue;
 
-                if (blocked[v.r][v.c])
+                if (isStaticBlocked(v.r, v.c))
                     continue;
 
                 if (staticDist[v.r][v.c] <= staticDist[u.r][u.c] + 1)
@@ -166,7 +166,6 @@ void waitReturnToBase(
         if (tryTacticalYieldMove(rb, ctx))
         {
             logBehavior("[YIELD] Robot tam lui de giai phong diem nghen.");
-
             switchMissionMode(ctx, RETURN_TO_BASE);
 
             ctx.needWaitDraw = false;

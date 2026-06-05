@@ -176,87 +176,40 @@ namespace
         return 0.0;
     }
 
-    bool pendingMoveDelta(const CoverageContext &ctx, float &dr, float &dc)
-    {
-        if (!ctx.pendingMove.active)
-            return false;
-
-        dr = (float)(ctx.pendingMove.to.r - ctx.pendingMove.from.r);
-        dc = (float)(ctx.pendingMove.to.c - ctx.pendingMove.from.c);
-        return fabs(dr) > 1e-5f || fabs(dc) > 1e-5f;
+    double robotRotationAngleDeg(
+        const Robot &rb,
+        const CoverageContext &ctx
+    ) {
+        return pendingRobotVisualAngleDeg(rb, ctx);
     }
 
-    Cell robotHeadingTarget(const Robot &rb)
-    {
-        if (rb.pathID < (int)rb.path.size())
-            return rb.path[rb.pathID];
-
-        if (rb.trail.size() >= 2)
+    Point robotVisualCenter(
+        const Robot &rb,
+        const CoverageContext &ctx
+    ) {
+        if (!ctx.pendingMove.active ||
+            ctx.pendingMove.phase == MOTION_TURNING)
         {
-            Cell prev = rb.trail[rb.trail.size() - 2];
-
-            return {
-                rb.pos.r + (rb.pos.r - prev.r),
-                rb.pos.c + (rb.pos.c - prev.c)
-            };
-        }
-
-        return {rb.pos.r - 1, rb.pos.c};
-    }
-
-    bool robotHeadingDelta(const Robot &rb, const CoverageContext &ctx, float &dr, float &dc)
-    {
-        if (pendingMoveDelta(ctx, dr, dc))
-            return true;
-
-        Cell next = robotHeadingTarget(rb);
-        dr = (float)(next.r - rb.pos.r);
-        dc = (float)(next.c - rb.pos.c);
-
-        return fabs(dr) > 1e-5f || fabs(dc) > 1e-5f;
-    }
-
-    double angleFromGridDelta(float dr, float dc)
-    {
-        if (fabs(dc) >= fabs(dr))
-        {
-            if (dc > 0.0f) return -90.0;
-            if (dc < 0.0f) return 90.0;
-        }
-
-        if (dr > 0.0f) return 180.0;
-        if (dr < 0.0f) return 0.0;
-
-        return 0.0;
-    }
-
-    double robotRotationAngleDeg(const Robot &rb, const CoverageContext &ctx)
-    {
-        float dr = 0.0f;
-        float dc = 0.0f;
-
-        if (!robotHeadingDelta(rb, ctx, dr, dc))
-            return 0.0;
-
-        return angleFromGridDelta(dr, dc);
-    }
-
-    Point robotVisualCenter(const Robot &rb, const CoverageContext &ctx)
-    {
-        if (!ctx.pendingMove.active)
             return visualCellCenter(rb.pos.r, rb.pos.c);
+        }
 
-        float t = pendingRobotMoveProgress(ctx);
+        float progress = pendingRobotMoveProgress(ctx);
+
         float r = ctx.pendingMove.from.r +
-                  (ctx.pendingMove.to.r - ctx.pendingMove.from.r) * t;
+                  (ctx.pendingMove.to.r - ctx.pendingMove.from.r) * progress;
+
         float c = ctx.pendingMove.from.c +
-                  (ctx.pendingMove.to.c - ctx.pendingMove.from.c) * t;
+                  (ctx.pendingMove.to.c - ctx.pendingMove.from.c) * progress;
 
         return visualWorldCenter(r, c);
     }
 
-    void paintRobotFallback(Mat &canvas, const Robot &rb, const CoverageContext &ctx, Point center)
-    {
+    void paintRobotFallback(
+        Mat &canvas,
+        const Robot &rb,
+        const CoverageContext &ctx,
+        Point center
+    ) {
         int cellSize = visualCellSize();
         int radius = max(4, cellSize / 5);
         int coreRadius = max(2, cellSize / 18);
@@ -266,25 +219,18 @@ namespace
         circle(canvas, center, radius, Scalar(30, 60, 90), 2);
         circle(canvas, center, coreRadius, Scalar(255, 255, 255), FILLED);
 
-        float dr = 0.0f;
-        float dc = 0.0f;
-
-        if (!robotHeadingDelta(rb, ctx, dr, dc))
-            return;
+        const double PI = 3.14159265358979323846;
+        double angleRad =
+            robotRotationAngleDeg(rb, ctx) * PI / 180.0;
 
         int arrowLen = radius + max(6, cellSize / 4);
-        Point nose = center;
 
-        if (fabs(dc) >= fabs(dr))
-        {
-            if (dc > 0.0f) nose.x += arrowLen;
-            else if (dc < 0.0f) nose.x -= arrowLen;
-        }
-        else
-        {
-            if (dr > 0.0f) nose.y += arrowLen;
-            else if (dr < 0.0f) nose.y -= arrowLen;
-        }
+        Point nose(
+            center.x +
+                (int)std::lround(-std::sin(angleRad) * arrowLen),
+            center.y +
+                (int)std::lround(-std::cos(angleRad) * arrowLen)
+        );
 
         arrowedLine(
             canvas,

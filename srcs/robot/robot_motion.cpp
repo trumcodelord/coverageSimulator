@@ -7,6 +7,8 @@
 #include "grid.h"
 #include "opencv.h"
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace
@@ -103,6 +105,39 @@ namespace
         pushHUDEvent("[RECHARGE] Tien the di ngang base, sac pin.");
     }
 
+    double angleForMove(Cell from, Cell to)
+    {
+        int dr = to.r - from.r;
+        int dc = to.c - from.c;
+
+        if (dc > 0) return -90.0;
+        if (dc < 0) return 90.0;
+        if (dr > 0) return 180.0;
+        return 0.0;
+    }
+
+    double normalizeAngle(double angle)
+    {
+        while (angle <= -180.0) angle += 360.0;
+        while (angle > 180.0) angle -= 360.0;
+        return angle;
+    }
+
+    double shortestTurnDelta(double fromDeg, double toDeg)
+    {
+        return normalizeAngle(toDeg - fromDeg);
+    }
+
+    int turnQuarterCount(double deltaDeg)
+    {
+        double amount = std::fabs(deltaDeg);
+        if (amount < 1e-6)
+            return 0;
+
+        return amount > 135.0 ? 2 : 1;
+    }
+
+
     RobotMoveResult commitPendingMove(
         Robot &rb,
         CoverageContext &ctx
@@ -120,6 +155,7 @@ namespace
         result.enteredUncoveredCell = move.enteredUncoveredCell;
 
         rb.pos = next;
+        rb.headingDeg = move.targetAngleDeg;
         setRobotAvoidanceCell(rb.pos);
 
         rb.trail.push_back(rb.pos);
@@ -148,7 +184,10 @@ namespace
             " path_goal=" + pathGoalText(ctx, rb) +
             " cell_status=" + cellStatusText(move.enteredUncoveredCell) +
             " edge_visit_count=" + std::to_string(edgeVisitCountAfter) +
-            " move_cost=" + std::to_string(move.energyCost);
+            " move_cost=" + std::to_string(move.energyCost) +
+            " turn_delta_deg=" + std::to_string((int)move.turnDeltaDeg) +
+            " turn_ticks=" + std::to_string(move.turnTicks) +
+            " move_ticks=" + std::to_string(move.moveTicks);
 
         if (result.powerLoss)
         {
@@ -197,24 +236,53 @@ bool hasPendingRobotMove(const CoverageContext &ctx)
     return ctx.pendingMove.active;
 }
 
+float pendingRobotTurnProgress(const CoverageContext &ctx)
+{
+    if (!ctx.pendingMove.active || ctx.pendingMove.turnTicks <= 0)
+        return 1.0f;
+
+    if (ctx.pendingMove.phase != MOTION_TURNING)
+        return 1.0f;
+
+    float progress = (float)ctx.pendingMove.elapsedTicks /
+                     (float)ctx.pendingMove.turnTicks;
+
+    return std::max(0.0f, std::min(1.0f, progress));
+}
+
 float pendingRobotMoveProgress(const CoverageContext &ctx)
 {
     if (!ctx.pendingMove.active)
         return 1.0f;
 
-    if (ctx.pendingMove.totalTicks <= 0)
+    if (ctx.pendingMove.phase == MOTION_TURNING)
+        return 0.0f;
+
+    if (ctx.pendingMove.moveTicks <= 0)
         return 1.0f;
 
     float progress = (float)ctx.pendingMove.elapsedTicks /
-                     (float)ctx.pendingMove.totalTicks;
+                     (float)ctx.pendingMove.moveTicks;
 
-    if (progress < 0.0f)
-        progress = 0.0f;
+    return std::max(0.0f, std::min(1.0f, progress));
+}
 
-    if (progress > 1.0f)
-        progress = 1.0f;
+double pendingRobotVisualAngleDeg(const Robot &rb, const CoverageContext &ctx)
+{
+    if (!ctx.pendingMove.active)
+        return rb.headingDeg;
 
-    return progress;
+    if (ctx.pendingMove.phase == MOTION_TURNING)
+    {
+        double progress = pendingRobotTurnProgress(ctx);
+
+        return normalizeAngle(
+            ctx.pendingMove.startAngleDeg +
+            ctx.pendingMove.turnDeltaDeg * progress
+        );
+    }
+
+    return ctx.pendingMove.targetAngleDeg;
 }
 
 RobotMoveResult advancePendingRobotMove(
@@ -228,7 +296,18 @@ RobotMoveResult advancePendingRobotMove(
 
     ctx.pendingMove.elapsedTicks++;
 
-    if (ctx.pendingMove.elapsedTicks < ctx.pendingMove.totalTicks)
+    if (ctx.pendingMove.phase == MOTION_TURNING)
+    {
+        if (ctx.pendingMove.elapsedTicks < ctx.pendingMove.turnTicks)
+            return result;
+
+        rb.headingDeg = ctx.pendingMove.targetAngleDeg;
+        ctx.pendingMove.phase = MOTION_MOVING;
+        ctx.pendingMove.elapsedTicks = 0;
+        return result;
+    }
+
+    if (ctx.pendingMove.elapsedTicks < ctx.pendingMove.moveTicks)
         return result;
 
     return commitPendingMove(rb, ctx);
@@ -285,12 +364,24 @@ RobotMoveResult moveRobotAlongCurrentPath(
     if (it != rb.edgeCount.end())
         edgeVisitCountBefore = it->second;
 
+    int stepTicks = stepTicksForMode(ctx.mode);
+    double targetAngle = angleForMove(prev, next);
+    double turnDelta = shortestTurnDelta(rb.headingDeg, targetAngle);
+    int quarterTurns = turnQuarterCount(turnDelta);
+    int turnTicks = quarterTurns * stepTicks;
+
     ctx.pendingMove.active = true;
     ctx.pendingMove.from = prev;
     ctx.pendingMove.to = next;
     ctx.pendingMove.energyCost = energyCost;
+    ctx.pendingMove.phase = turnTicks > 0 ? MOTION_TURNING : MOTION_MOVING;
     ctx.pendingMove.elapsedTicks = 0;
-    ctx.pendingMove.totalTicks = stepTicksForMode(ctx.mode);
+    ctx.pendingMove.totalTicks = turnTicks + stepTicks;
+    ctx.pendingMove.turnTicks = turnTicks;
+    ctx.pendingMove.moveTicks = stepTicks;
+    ctx.pendingMove.startAngleDeg = rb.headingDeg;
+    ctx.pendingMove.targetAngleDeg = targetAngle;
+    ctx.pendingMove.turnDeltaDeg = turnDelta;
     ctx.pendingMove.enteredUncoveredCell = result.enteredUncoveredCell;
     ctx.pendingMove.pathIndexBefore = rb.pathID;
     ctx.pendingMove.pathLength = (int)rb.path.size();

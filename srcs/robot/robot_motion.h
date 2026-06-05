@@ -28,3 +28,5 @@ RobotMoveResult advancePendingRobotMove(
 );
 
 float pendingRobotMoveProgress(const CoverageContext &ctx);
+float pendingRobotTurnProgress(const CoverageContext &ctx);
+double pendingRobotVisualAngleDeg(const Robot &rb, const CoverageContext &ctx);

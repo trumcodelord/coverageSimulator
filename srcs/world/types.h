@@ -104,6 +104,8 @@ struct Robot
     int returnCount = 0;
     int rechargeCount = 0;
 
+    double headingDeg = 0.0;
+
     MissionOutcome missionOutcome = MISSION_RUNNING;
 
     std::vector<Cell> path;

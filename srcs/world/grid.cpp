@@ -4,7 +4,7 @@ using namespace std;
 
 int rows, cols;
 Cell start;
-bool blocked[1001][1001], covered[1001][1001], dynamicBlocked[1001][1001];
+bool covered[1001][1001], dynamicBlocked[1001][1001];
 int terrainCost[1001][1001];
 const int dr[5] = {0, 1, 0, -1, 0};
 const int dc[5] = {0, 0, 1, 0, -1};
@@ -20,7 +20,7 @@ bool isStaticBlocked(int r, int c)
     if (!inBounds(r, c))
         return true;
 
-    return blocked[r][c] || terrainCost[r][c] >= INF;
+    return terrainCost[r][c] >= INF;
 }
 
 bool isDynamicBlockedCell(int r, int c)
@@ -38,9 +38,6 @@ bool isBlockedCell(int r, int c)
 int baseTerrainCostAt(int r, int c)
 {
     if (!inBounds(r, c))
-        return INF;
-
-    if (isStaticBlocked(r, c))
         return INF;
 
     return terrainCost[r][c];

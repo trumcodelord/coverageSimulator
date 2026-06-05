@@ -5,7 +5,6 @@
 
 extern int rows, cols;
 extern Cell start;
-extern bool blocked[1001][1001];
 extern bool covered[1001][1001];
 extern bool dynamicBlocked[1001][1001];
 extern int terrainCost[1001][1001];

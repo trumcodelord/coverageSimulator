@@ -4,6 +4,13 @@
 
 #include <string>
 
+enum RobotMotionPhase
+{
+    MOTION_IDLE,
+    MOTION_TURNING,
+    MOTION_MOVING
+};
+
 struct PendingRobotMove
 {
     bool active = false;
@@ -12,8 +19,18 @@ struct PendingRobotMove
     Cell to = {0, 0};
 
     int energyCost = 0;
+
+    RobotMotionPhase phase = MOTION_IDLE;
+
     int elapsedTicks = 0;
     int totalTicks = 1;
+
+    int turnTicks = 0;
+    int moveTicks = 1;
+
+    double startAngleDeg = 0.0;
+    double targetAngleDeg = 0.0;
+    double turnDeltaDeg = 0.0;
 
     bool enteredUncoveredCell = false;
 
