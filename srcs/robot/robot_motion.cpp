@@ -137,6 +137,38 @@ namespace
         return amount > 135.0 ? 2 : 1;
     }
 
+    void consumeTurnQuarterEnergy(Robot &rb, CoverageContext &ctx)
+    {
+        if (ctx.pendingMove.turnQuartersConsumed >=
+            ctx.pendingMove.totalTurnQuarters)
+        {
+            return;
+        }
+
+        int before = rb.energy;
+        consumeEnergy(rb, ctx.pendingMove.turnQuarterEnergyCost);
+
+        ctx.pendingMove.turnQuartersConsumed++;
+
+        logRobotEvent(
+            rb.energy <= 0 ? "ERROR" : "INFO",
+            "ENERGY",
+            "turn_energy_consumed",
+            "Robot consumes one quarter-turn energy unit while rotating in place.",
+            rb,
+            ctx.mode,
+            "decision_id=" + std::to_string(ctx.activeDecisionId) +
+            " purpose=" + purposeForMove(ctx) +
+            " reason=" + reasonForMove(ctx) +
+            " turn_quarter_cost=" + std::to_string(ctx.pendingMove.turnQuarterEnergyCost) +
+            " turn_quarters_consumed=" + std::to_string(ctx.pendingMove.turnQuartersConsumed) +
+            " total_turn_quarters=" + std::to_string(ctx.pendingMove.totalTurnQuarters) +
+            " energy_before=" + std::to_string(before) +
+            " energy_after=" + std::to_string(rb.energy) +
+            " pos=" + cellText(rb.pos)
+        );
+
+    }
 
     RobotMoveResult commitPendingMove(
         Robot &rb,
@@ -154,6 +186,8 @@ namespace
         result.to = next;
         result.enteredUncoveredCell = move.enteredUncoveredCell;
 
+        int energyBeforeMove = rb.energy;
+
         rb.pos = next;
         rb.headingDeg = move.targetAngleDeg;
         setRobotAvoidanceCell(rb.pos);
@@ -167,7 +201,7 @@ namespace
         int edgeVisitCountAfter = rb.edgeCount[e];
 
         rb.steps++;
-        consumeEnergy(rb, move.energyCost);
+        consumeEnergy(rb, move.movementEnergyCost);
 
         result.moved = true;
         result.powerLoss = (rb.energy <= 0);
@@ -184,7 +218,9 @@ namespace
             " path_goal=" + pathGoalText(ctx, rb) +
             " cell_status=" + cellStatusText(move.enteredUncoveredCell) +
             " edge_visit_count=" + std::to_string(edgeVisitCountAfter) +
-            " move_cost=" + std::to_string(move.energyCost) +
+            " movement_cost=" + std::to_string(move.movementEnergyCost) +
+            " energy_before_move=" + std::to_string(energyBeforeMove) +
+            " energy_after_move=" + std::to_string(rb.energy) +
             " turn_delta_deg=" + std::to_string((int)move.turnDeltaDeg) +
             " turn_ticks=" + std::to_string(move.turnTicks) +
             " move_ticks=" + std::to_string(move.moveTicks);
@@ -195,7 +231,7 @@ namespace
                 "ERROR",
                 "MOVE",
                 "commit_power_loss",
-                "Robot reached the new cell but lost power after this step.",
+                "Robot reached the new cell but lost power after movement energy was consumed.",
                 rb,
                 ctx.mode,
                 commonDetails
@@ -226,6 +262,7 @@ namespace
             " reward_new_cell=" + std::to_string(rewardNewCell) +
             " penalty_revisit=" + std::to_string(penaltyRevisit)
         );
+
 
         return result;
     }
@@ -294,10 +331,37 @@ RobotMoveResult advancePendingRobotMove(
     if (!ctx.pendingMove.active)
         return result;
 
-    ctx.pendingMove.elapsedTicks++;
-
     if (ctx.pendingMove.phase == MOTION_TURNING)
     {
+        ctx.pendingMove.elapsedTicks++;
+
+        int completedQuarters = 0;
+
+        if (ctx.pendingMove.turnTicks > 0 &&
+            ctx.pendingMove.totalTurnQuarters > 0)
+        {
+            completedQuarters =
+                (ctx.pendingMove.elapsedTicks *
+                 ctx.pendingMove.totalTurnQuarters) /
+                ctx.pendingMove.turnTicks;
+        }
+
+        while (ctx.pendingMove.turnQuartersConsumed <
+                   completedQuarters &&
+               ctx.pendingMove.turnQuartersConsumed <
+                   ctx.pendingMove.totalTurnQuarters)
+        {
+            consumeTurnQuarterEnergy(rb, ctx);
+
+            if (rb.energy <= 0)
+            {
+                result.powerLoss = true;
+                ctx.pendingMove = PendingRobotMove();
+                ctx.shouldStop = true;
+                return result;
+            }
+        }
+
         if (ctx.pendingMove.elapsedTicks < ctx.pendingMove.turnTicks)
             return result;
 
@@ -306,6 +370,8 @@ RobotMoveResult advancePendingRobotMove(
         ctx.pendingMove.elapsedTicks = 0;
         return result;
     }
+
+    ctx.pendingMove.elapsedTicks++;
 
     if (ctx.pendingMove.elapsedTicks < ctx.pendingMove.moveTicks)
         return result;
@@ -316,7 +382,8 @@ RobotMoveResult advancePendingRobotMove(
 RobotMoveResult moveRobotAlongCurrentPath(
     Robot &rb,
     CoverageContext &ctx,
-    int energyCost
+    int movementEnergyCost,
+    int turnQuarterEnergyCost
 ) {
     RobotMoveResult result;
 
@@ -373,7 +440,10 @@ RobotMoveResult moveRobotAlongCurrentPath(
     ctx.pendingMove.active = true;
     ctx.pendingMove.from = prev;
     ctx.pendingMove.to = next;
-    ctx.pendingMove.energyCost = energyCost;
+    ctx.pendingMove.movementEnergyCost = movementEnergyCost;
+    ctx.pendingMove.turnQuarterEnergyCost = turnQuarterEnergyCost;
+    ctx.pendingMove.totalTurnQuarters = quarterTurns;
+    ctx.pendingMove.turnQuartersConsumed = 0;
     ctx.pendingMove.phase = turnTicks > 0 ? MOTION_TURNING : MOTION_MOVING;
     ctx.pendingMove.elapsedTicks = 0;
     ctx.pendingMove.totalTicks = turnTicks + stepTicks;

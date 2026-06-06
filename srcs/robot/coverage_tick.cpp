@@ -36,13 +36,22 @@ namespace
                hasBlockedCellAheadOnPath(rb);
     }
 
-    int energyCostForNextMove(const Robot &rb, RobotMode mode)
+    int movementEnergyCostForNextMove(const Robot &rb, RobotMode mode)
     {
         if (rb.pathID >= (int)rb.path.size())
             return 0;
 
         Cell next = rb.path[rb.pathID];
-        return computeMoveEnergyCost(rb, next, mode);
+        return movementEnergyCostForStep(rb, next, mode);
+    }
+
+    int turnQuarterEnergyCostForNextMove(const Robot &rb)
+    {
+        if (rb.pathID >= (int)rb.path.size())
+            return 0;
+
+        Cell next = rb.path[rb.pathID];
+        return turnQuarterEnergyCostForStep(rb, next);
     }
 
     void handleMoveResult(
@@ -148,12 +157,17 @@ namespace
         if (rb.pathID >= (int)rb.path.size())
             return;
 
-        int energyCost = energyCostForNextMove(rb, ctx.mode);
+        int movementCost =
+            movementEnergyCostForNextMove(rb, ctx.mode);
+
+        int turnQuarterCost =
+            turnQuarterEnergyCostForNextMove(rb);
 
         RobotMoveResult move = moveRobotAlongCurrentPath(
             rb,
             ctx,
-            energyCost
+            movementCost,
+            turnQuarterCost
         );
 
         handleMoveResult(rb, ctx, move);
@@ -257,24 +271,12 @@ void handleCoverageCompletion(
     if (isAtBase(rb))
     {
         clearRobotPath(rb);
-
         ctx.outcome = MISSION_SUCCESS;
-
-        setHUDState("DONE");
-
+        ctx.shouldStop = true;
         finished = true;
+        setHUDState("DONE");
         return;
     }
 
-    if (ctx.mode == POWER_SAVE || ctx.mode == WAIT_FOR_COMMAND)
-        return;
-
-    if (ctx.mode != RETURN_TO_BASE && ctx.mode != RECHARGING)
-    {
-        enterReturnToBase(
-            ctx,
-            rb,
-            "[MISSION] Da phu het ban do. Quay ve base."
-        );
-    }
+    enterReturnToBase(ctx, rb);
 }

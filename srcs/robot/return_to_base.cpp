@@ -101,10 +101,19 @@ namespace
 
         int stepsBefore = rb.steps;
 
+        Cell next = rb.path[rb.pathID];
+
+        int movementCost =
+            movementEnergyCostForStep(rb, next, ctx.mode);
+
+        int turnQuarterCost =
+            turnQuarterEnergyCostForStep(rb, next);
+
         RobotMoveResult move = moveRobotAlongCurrentPath(
             rb,
             ctx,
-            1
+            movementCost,
+            turnQuarterCost
         );
 
         if (!move.moved || move.blocked || ctx.shouldStop)
@@ -349,10 +358,19 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
 
     int stepsBefore = rb.steps;
 
+    Cell next = rb.path[rb.pathID];
+
+    int movementCost =
+        movementEnergyCostForStep(rb, next, ctx.mode);
+
+    int turnQuarterCost =
+        turnQuarterEnergyCostForStep(rb, next);
+
     RobotMoveResult move = moveRobotAlongCurrentPath(
         rb,
         ctx,
-        1
+        movementCost,
+        turnQuarterCost
     );
 
     if (move.powerLoss)

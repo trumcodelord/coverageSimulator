@@ -3,49 +3,48 @@
 #include "grid.h"
 
 #include <algorithm>
-#include <cstdlib>
+#include <cmath>
 
 using namespace std;
 
-static bool isAtBase(const Robot &rb)
+namespace
 {
-    return rb.pos == rb.base;
+    bool isAtBase(const Robot &rb)
+    {
+        return rb.pos == rb.base;
+    }
+
+    double angleForMove(Cell from, Cell to)
+    {
+        int dr = to.r - from.r;
+        int dc = to.c - from.c;
+
+        if (dc > 0) return -90.0;
+        if (dc < 0) return 90.0;
+        if (dr > 0) return 180.0;
+        return 0.0;
+    }
+
+    double normalizeAngle(double angle)
+    {
+        while (angle <= -180.0) angle += 360.0;
+        while (angle > 180.0) angle -= 360.0;
+        return angle;
+    }
+
+    int quarterTurnsForMove(const Robot &rb, Cell next)
+    {
+        double targetAngle = angleForMove(rb.pos, next);
+        double delta = fabs(normalizeAngle(targetAngle - rb.headingDeg));
+
+        if (delta < 1e-6)
+            return 0;
+
+        return delta > 135.0 ? 2 : 1;
+    }
 }
 
-static Cell currentDirection(const Robot &rb)
-{
-    if (rb.trail.size() < 2)
-        return {0, 0};
-
-    Cell prev = rb.trail[rb.trail.size() - 2];
-    Cell curr = rb.trail.back();
-
-    return {
-        curr.r - prev.r,
-        curr.c - prev.c
-    };
-}
-
-static Cell nextDirection(const Robot &rb, Cell next)
-{
-    return {
-        next.r - rb.pos.r,
-        next.c - rb.pos.c
-    };
-}
-
-static bool directionChanged(const Robot &rb, Cell next)
-{
-    Cell a = currentDirection(rb);
-    Cell b = nextDirection(rb, next);
-
-    if (a == Cell{0, 0})
-        return false;
-
-    return !(a == b);
-}
-
-int computeMoveEnergyCost(
+int movementEnergyCostForStep(
     const Robot &rb,
     Cell next,
     RobotMode mode,
@@ -56,12 +55,7 @@ int computeMoveEnergyCost(
     if (terrainEntryCost >= INF)
         return INF;
 
-    // Terrain cost is the main movement cost.
-    // baseMoveCost remains a lower bound so legacy cost-1 maps behave exactly as before.
     int cost = max(config.baseMoveCost, terrainEntryCost);
-
-    if (directionChanged(rb, next))
-        cost += config.turnCost;
 
     if (mode == ALERT)
         cost += config.alertPenalty;
@@ -73,6 +67,40 @@ int computeMoveEnergyCost(
         cost += config.finalPushPenalty;
 
     return max(0, cost);
+}
+
+int turnQuarterEnergyCostForStep(
+    const Robot &rb,
+    Cell next
+) {
+    if (quarterTurnsForMove(rb, next) <= 0)
+        return 0;
+
+    int currentTerrainCost = baseTerrainCostAt(rb.pos.r, rb.pos.c);
+
+    if (currentTerrainCost >= INF)
+        return INF;
+
+    return currentTerrainCost;
+}
+
+int computeMoveEnergyCost(
+    const Robot &rb,
+    Cell next,
+    RobotMode mode,
+    const EnergyCostConfig &config
+) {
+    int movementCost =
+        movementEnergyCostForStep(rb, next, mode, config);
+
+    int turnQuarterCost =
+        turnQuarterEnergyCostForStep(rb, next);
+
+    if (movementCost >= INF || turnQuarterCost >= INF)
+        return INF;
+
+    return movementCost +
+           quarterTurnsForMove(rb, next) * turnQuarterCost;
 }
 
 void consumeEnergy(Robot &rb, int amount)

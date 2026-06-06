@@ -5,7 +5,6 @@
 struct EnergyCostConfig
 {
     int baseMoveCost = 1;
-    int turnCost = 0;
     int alertPenalty = 0;
     int returnPenalty = 0;
     int finalPushPenalty = 0;
@@ -17,6 +16,18 @@ struct ReturnEnergyPolicy
     int returnMarginDivisor = 3;
     int minEmergencyEnergy = 3;
 };
+
+int movementEnergyCostForStep(
+    const Robot &rb,
+    Cell next,
+    RobotMode mode,
+    const EnergyCostConfig &config = EnergyCostConfig()
+);
+
+int turnQuarterEnergyCostForStep(
+    const Robot &rb,
+    Cell next
+);
 
 int computeMoveEnergyCost(
     const Robot &rb,

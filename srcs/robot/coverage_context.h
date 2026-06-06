@@ -18,7 +18,10 @@ struct PendingRobotMove
     Cell from = {0, 0};
     Cell to = {0, 0};
 
-    int energyCost = 0;
+    int movementEnergyCost = 0;
+    int turnQuarterEnergyCost = 0;
+    int totalTurnQuarters = 0;
+    int turnQuartersConsumed = 0;
 
     RobotMotionPhase phase = MOTION_IDLE;
 
