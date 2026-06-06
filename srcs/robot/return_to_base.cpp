@@ -174,7 +174,7 @@ void waitReturnToBase(
     {
         if (tryTacticalYieldMove(rb, ctx))
         {
-            logBehavior("[YIELD] Robot tam lui de giai phong diem nghen.");
+            logBehavior("[YIELD] Robot tam lui de nhuong duong.");
             switchMissionMode(ctx, RETURN_TO_BASE);
 
             ctx.needWaitDraw = false;
@@ -188,7 +188,7 @@ void waitReturnToBase(
 
     if (ctx.returnWaitCount >= maxReturnWaitBeforeDetour())
     {
-        logBehavior("[RETURN] Cho qua lau, thu tim duong vong.");
+        logBehavior("[RETURN] Cho qua lau. Thu tim duong vong.");
 
         PathBuildResult detour = rebuildSafeDetourPathToBase(rb, &ctx);
 
@@ -212,7 +212,7 @@ void waitReturnToBase(
             enterPowerSaveForReturn(
                 ctx,
                 rb,
-                "[POWER_SAVE] Da phu xong nhung robot khong con du nang luong de ve base."
+                "[POWER_SAVE] Da phu xong nhung khong du pin ve base."
             );
         }
         else
@@ -220,7 +220,7 @@ void waitReturnToBase(
             enterWaitForCommandFromReturn(
                 ctx,
                 rb,
-                "[COMMAND] Khong du nang luong de ve base sau khi duong thong. Xin chi thi."
+                "[COMMAND] Khong du pin ve base. Cho chi thi."
             );
         }
 
@@ -270,7 +270,7 @@ void enterReturnToBase(
         waitReturnToBase(
             ctx,
             rb,
-            "[RETURN] Chua tim duoc duong ve base. Cho va thu lai."
+            "[RETURN] Chua co duong ve base. Dang cho."
         );
     }
 }
@@ -289,7 +289,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             ctx.outcome = MISSION_SUCCESS;
             ctx.shouldStop = true;
             setHUDState("DONE");
-            logBehavior("[MISSION] SUCCESS. Robot da ve base.");
+            logBehavior("[MISSION] Hoan thanh. Robot da ve base.");
             return;
         }
 
@@ -299,7 +299,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             ctx.shouldStop = true;
             ctx.needWaitDraw = false;
             setHUDState("PARTIAL_RETURNED");
-            logBehavior("[MISSION] PARTIAL_RETURNED. Robot da ve base an toan.");
+            logBehavior("[MISSION] Ket thuc mot phan. Robot da ve base.");
             return;
         }
 
@@ -313,7 +313,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         waitReturnToBase(
             ctx,
             rb,
-            "[RETURN] Vat can dong qua gan, dung cho an toan."
+            "[ALERT] Vat can dong qua gan. Tam dung."
         );
         return;
     }
@@ -327,7 +327,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             waitReturnToBase(
                 ctx,
                 rb,
-                "[RETURN] Duong ve base tam thoi bi chan. Cho obstacle di qua roi thu lai."
+                "[RETURN] Duong ve dang bi chan. Dang cho."
             );
             return;
         }
@@ -338,7 +338,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         waitReturnToBase(
             ctx,
             rb,
-            "[RETURN] Active return path bi chan, cho obstacle di qua."
+            "[BLOCKED] Duong ve dang bi chan."
         );
         return;
     }
@@ -351,7 +351,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         waitReturnToBase(
             ctx,
             rb,
-            "[RETURN] O tiep theo khong an toan, dung cho."
+            "[BLOCKED] O tiep theo khong an toan."
         );
         return;
     }
@@ -379,7 +379,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
         ctx.outcome = powerLossOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
         setHUDState("POWER_LOSS");
-        logBehavior("[MISSION] POWER_LOSS.");
+        logBehavior("[MISSION] Mat nguon.");
         return;
     }
 

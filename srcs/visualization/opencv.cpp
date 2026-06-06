@@ -42,8 +42,8 @@ namespace
 
             pushHUDEvent(
                 showCoordinateHeaders
-                    ? "Coordinate headers enabled."
-                    : "Coordinate headers disabled."
+                    ? "[VIEW] Da bat toa do."
+                    : "[VIEW] Da tat toa do."
             );
 
             return;
@@ -55,8 +55,8 @@ namespace
 
             pushHUDEvent(
                 testSpeedEnabled
-                    ? "Test speed enabled: 5x."
-                    : "Test speed disabled: 1x."
+                    ? "[SPEED] Da bat toc do 5x."
+                    : "[SPEED] Da ve toc do 1x."
             );
 
             return;

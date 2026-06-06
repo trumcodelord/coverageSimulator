@@ -25,7 +25,8 @@ void switchMissionMode(CoverageContext &ctx, RobotMode next)
         " to=" + string(modeName(next))
     );
 
-    logHUDOnly("Mode changed: " + string(modeName(next)));
+    string message = "[MODE] Chuyen sang " + name + ".";
+    logHUDOnly(message);
     setHUDState(name);
 }
 

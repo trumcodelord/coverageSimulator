@@ -55,7 +55,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            logBehavior("[ENERGY] Short on energy. Recharging.");
+            logBehavior("[ENERGY] Nang luong thap. Dang sac pin.");
             clearRobotPath(rb);
             switchMissionMode(ctx, RECHARGING);
             setCoverageCooldown(ctx, rechargeWaitTicks());
@@ -65,7 +65,7 @@ namespace
         enterReturnToBase(
             ctx,
             rb,
-            "[ENERGY] Current energy is not enough for the next target. Returning to base to recharge."
+            "[ENERGY] Nang luong thap. Quay ve base."
         );
     }
 
@@ -73,12 +73,12 @@ namespace
         Robot &rb,
         CoverageContext &ctx
     ) {
-        logBehavior("[ENERGY] Even full battery cannot reach any remaining uncovered target and return with margin.");
+        logBehavior("[ENERGY] Pin day van khong du cho muc tieu con lai.");
 
         enterSafeTerminationReturn(
             ctx,
             rb,
-            "[RETURN] Coverage objective is infeasible with current battery capacity. Returning to base safely."
+            "[RETURN] Nhiem vu khong kha thi. Quay ve base."
         );
     }
 }
@@ -88,9 +88,9 @@ void printRetryMessage(const char *msg, int retryCount)
     if (retryCount == 1 || retryCount % retryLogInterval() == 0)
     {
         logBehavior(
-            string(msg) + " Retry " +
+            string(msg) + " Thu lai " +
             to_string(retryCount) + "/" +
-            to_string(maxRetryCount())
+            to_string(maxRetryCount()) + "."
         );
     }
 }
@@ -101,7 +101,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == PRESERVE)
     {
-        logBehavior("[COMMAND] PRESERVE. Switching to POWER_SAVE.");
+        logBehavior("[COMMAND] Bao toan nang luong. Chuyen sang nghi.");
 
         clearRobotPath(rb);
         switchMissionMode(ctx, POWER_SAVE);
@@ -114,7 +114,7 @@ void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
 
     if (criticalDirective() == HEROIC)
     {
-        logBehavior("[COMMAND] HEROIC. Continuing mission until energy is exhausted.");
+        logBehavior("[COMMAND] Tiep tuc nhiem vu den khi het pin.");
         enterFinalPushMode(ctx, rb);
         return;
     }
@@ -129,13 +129,13 @@ void handleActivePathObstructed(Robot &rb, CoverageContext &ctx)
     ctx.alertFailCount++;
 
     printRetryMessage(
-        "[ALERT] Dynamic obstacle is on the active path.",
+        "[ALERT] Vat can dong chan duong.",
         ctx.retryCount
     );
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] Active path was blocked repeatedly. Switching to HOLD_SAFE.");
+        logBehavior("[HOLD] Duong bi chan nhieu lan. Tam dung.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -167,7 +167,7 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (recovered.success)
     {
-        logBehavior("[RECOVER] A usable coverage path is available again. Leaving HOLD_SAFE.");
+        logBehavior("[RECOVER] Da tim lai duong an toan.");
 
         switchMissionMode(ctx, ALERT);
 
@@ -193,20 +193,20 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
     if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
     {
         logBehavior(
-            "[HOLD] No safe path yet. Continuing to wait. Cycle " +
+            "[HOLD] Chua co duong an toan. Chu ky " +
             to_string(ctx.holdCycleCount) + "/" +
-            to_string(maxHoldCycles())
+            to_string(maxHoldCycles()) + "."
         );
     }
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
-        logBehavior("[RETURN] HOLD_SAFE lasted too long. Cannot continue coverage. Trying to return to base.");
+        logBehavior("[RETURN] Cho qua lau. Thu quay ve base.");
 
         enterSafeTerminationReturn(
             ctx,
             rb,
-            "[RETURN] Coverage path could not recover. Returning to base if possible."
+            "[RETURN] Khong the tiep tuc. Quay ve base."
         );
         return;
     }
@@ -222,13 +222,13 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     ctx.alertFailCount++;
 
     printRetryMessage(
-        "[WAIT] No usable target/path is available right now.",
+        "[WAIT] Chua co muc tieu hoac duong di.",
         ctx.retryCount
     );
 
     if (ctx.retryCount > maxRetryCount())
     {
-        logBehavior("[STOP] Could not find target/path after many retries.");
+        logBehavior("[STOP] Khong tim duoc duong sau nhieu lan thu.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -238,7 +238,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] Alert failed repeatedly. Switching to HOLD_SAFE.");
+        logBehavior("[HOLD] Thu lai nhieu lan. Tam dung.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -287,11 +287,11 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
     enterAlertMode(ctx);
     ctx.alertFailCount++;
 
-    printRetryMessage("[WAIT] The next cell is blocked.", ctx.retryCount);
+    printRetryMessage("[WAIT] O tiep theo dang bi chan.", ctx.retryCount);
 
     if (ctx.retryCount > maxRetryCount())
     {
-        logBehavior("[STOP] Path was blocked too many times. Stopping simulation.");
+        logBehavior("[STOP] Duong bi chan qua nhieu lan.");
 
         ctx.outcome = stoppedOutcome(ctx.coverageComplete);
         ctx.shouldStop = true;
@@ -301,7 +301,7 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     if (ctx.alertFailCount >= alertFailToHold())
     {
-        logBehavior("[HOLD] No useful safe step is available. Switching to HOLD_SAFE.");
+        logBehavior("[HOLD] Khong co buoc di an toan. Tam dung.");
 
         enterHoldSafeMode(ctx, rb);
         setCoverageCooldown(ctx, holdWaitTicks());
@@ -319,7 +319,7 @@ void handleRecharging(Robot &rb, CoverageContext &ctx)
 
     rechargeRobot(rb);
 
-    logBehavior("[RECHARGE] Battery is fully recharged.");
+    logBehavior("[RECHARGE] Da sac day pin.");
 
     clearRobotPath(rb);
     switchMissionMode(ctx, NORMAL);
