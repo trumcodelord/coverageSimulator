@@ -17,6 +17,7 @@ namespace
     {
         int costFromRobot = INF;
         Cell target = {0, 0};
+        HeadingDir arrivalDir = DIR_NORTH;
     };
 
     struct PathValueStats
@@ -26,6 +27,92 @@ namespace
         int revisits = 0;
         int blockedCells = 0;
     };
+
+    HeadingDir currentHeadingDir(const Robot &rb)
+    {
+        return headingDirFromDegrees(rb.headingDeg);
+    }
+
+    bool directionForStep(Cell from, Cell to, HeadingDir &dir)
+    {
+        int dr = to.r - from.r;
+        int dc = to.c - from.c;
+
+        if (dr == -1 && dc == 0)
+        {
+            dir = DIR_NORTH;
+            return true;
+        }
+
+        if (dr == 0 && dc == 1)
+        {
+            dir = DIR_EAST;
+            return true;
+        }
+
+        if (dr == 1 && dc == 0)
+        {
+            dir = DIR_SOUTH;
+            return true;
+        }
+
+        if (dr == 0 && dc == -1)
+        {
+            dir = DIR_WEST;
+            return true;
+        }
+
+        return false;
+    }
+
+    int movementCostForPathCell(
+        Cell p,
+        PlannerObstacleMode obstacleMode
+    ) {
+        if (obstacleMode == PlannerObstacleMode::IGNORE_DYNAMIC)
+            return baseTerrainCostAt(p.r, p.c);
+
+        return effectiveTerrainCostAt(p.r, p.c);
+    }
+
+    int pathEnergyCost(
+        const vector<Cell> &path,
+        HeadingDir startDir,
+        PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC
+    ) {
+        if (path.size() <= 1)
+            return 0;
+
+        long long total = 0;
+        HeadingDir currentDir = startDir;
+
+        for (int i = 1; i < (int)path.size(); i++)
+        {
+            Cell current = path[i - 1];
+            Cell next = path[i];
+            HeadingDir nextDir;
+
+            if (!directionForStep(current, next, nextDir))
+                return INF;
+
+            int currentTerrainCost = baseTerrainCostAt(current.r, current.c);
+            int movementCost = movementCostForPathCell(next, obstacleMode);
+
+            if (currentTerrainCost >= INF || movementCost >= INF)
+                return INF;
+
+            total += movementCost;
+            total += (long long)quarterTurnsBetween(currentDir, nextDir) *
+                     currentTerrainCost;
+
+            if (total >= INF)
+                return INF;
+
+            currentDir = nextDir;
+        }
+
+        return (int)total;
+    }
 
     bool compareCandidateByDistance(
         const CoverageCandidate &a,
@@ -37,7 +124,10 @@ namespace
         if (a.target.r != b.target.r)
             return a.target.r < b.target.r;
 
-        return a.target.c < b.target.c;
+        if (a.target.c != b.target.c)
+            return a.target.c < b.target.c;
+
+        return (int)a.arrivalDir < (int)b.arrivalDir;
     }
 
     vector<CoverageCandidate> collectReachableUncoveredCandidates(
@@ -45,7 +135,12 @@ namespace
     ) {
         vector<CoverageCandidate> candidates;
 
-        dijkstra(rb.pos, d, trace);
+        HeadingDir startDir = currentHeadingDir(rb);
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
 
         for (int i = 1; i <= rows; i++)
         {
@@ -54,10 +149,14 @@ namespace
                 if (!isCoverageTargetCell(i, j) || covered[i][j])
                     continue;
 
-                if (d[i][j] >= INF)
+                Cell target = {i, j};
+                HeadingDir arrivalDir = DIR_NORTH;
+                int cost = bestOrientedDistanceTo(target, &arrivalDir);
+
+                if (cost >= INF)
                     continue;
 
-                candidates.push_back({d[i][j], {i, j}});
+                candidates.push_back({cost, target, arrivalDir});
             }
         }
 
@@ -70,10 +169,17 @@ namespace
         return candidates;
     }
 
-    int estimateCostFromTargetToBase(Cell target, const Robot &rb)
-    {
-        dijkstra(target, d, trace);
-        return d[rb.base.r][rb.base.c];
+    int estimateCostFromTargetToBase(
+        const CoverageCandidate &candidate,
+        const Robot &rb
+    ) {
+        dijkstraOriented(
+            candidate.target,
+            candidate.arrivalDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
+
+        return bestOrientedDistanceTo(rb.base);
     }
 
     bool canFullBatteryVisitTargetAndReturn(
@@ -99,23 +205,13 @@ namespace
         return (long long)costToTarget + (long long)costToBase;
     }
 
-    int pathCost(const vector<Cell> &path)
-    {
-        if (path.size() <= 1)
-            return 0;
-
-        int total = 0;
-
-        for (int i = 1; i < (int)path.size(); i++)
-            total += terrainCostAt(path[i].r, path[i].c);
-
-        return total;
-    }
-
-    PathValueStats evaluatePathValue(const vector<Cell> &path)
-    {
+    PathValueStats evaluatePathValue(
+        const vector<Cell> &path,
+        HeadingDir startDir,
+        PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC
+    ) {
         PathValueStats stats;
-        stats.pathCost = pathCost(path);
+        stats.pathCost = pathEnergyCost(path, startDir, obstacleMode);
 
         for (int i = 1; i < (int)path.size(); i++)
         {
@@ -174,6 +270,7 @@ namespace
         appendDetail(details, kv("covered", covered[candidate.target.r][candidate.target.c]));
         appendDetail(details, kv("reachable", candidate.costFromRobot < INF));
         appendDetail(details, kv("cost_to_target", candidate.costFromRobot));
+        appendDetail(details, kv("arrival_dir", (int)candidate.arrivalDir));
         appendDetail(details, kv("cost_to_base", costToBase));
         appendDetail(details, kv("required_lower_bound", requiredEnergyLowerBound(candidate.costFromRobot, costToBase)));
         appendDetail(details, kv("full_battery_feasible", fullBatteryFeasible));
@@ -214,6 +311,7 @@ namespace
         appendDetail(details, kv("rejected_max_energy_infeasible", rejectedMaxEnergyInfeasible));
         appendDetail(details, kvCell("selected", selected.target));
         appendDetail(details, kv("selected_cost_to_target", selected.costFromRobot));
+        appendDetail(details, kv("selected_arrival_dir", (int)selected.arrivalDir));
         appendDetail(details, kv("selected_cost_to_base", selectedCostToBase));
         appendDetail(details, kv("selected_required_lower_bound", requiredEnergyLowerBound(selected.costFromRobot, selectedCostToBase)));
         appendDetail(details, kv("selected_full_battery_feasible", selectedFullBatteryFeasible));
@@ -234,13 +332,17 @@ namespace
         const Robot &rb,
         const CoverageCandidate &candidate
     ) {
-        PathValueStats stats = evaluatePathValue(rb.path);
+        PathValueStats stats = evaluatePathValue(
+            rb.path,
+            currentHeadingDir(rb)
+        );
 
         string details;
         if (ctx != nullptr)
             appendDetail(details, kv("decision_id", ctx->activeDecisionId));
 
         appendDetail(details, kvCell("target", candidate.target));
+        appendDetail(details, kv("target_arrival_dir", (int)candidate.arrivalDir));
         appendDetail(details, kv("path_len", (int)rb.path.size()));
         appendDetail(details, kv("path_cost", stats.pathCost));
         appendDetail(details, kv("new_cells", stats.newCells));
@@ -314,15 +416,23 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
     if (isAtBase(rb))
         return makeAlreadyAtGoalResult(rb);
 
-    dijkstra(rb.pos, d, trace);
+    HeadingDir startDir = currentHeadingDir(rb);
+    dijkstraOriented(
+        rb.pos,
+        startDir,
+        PlannerObstacleMode::RESPECT_DYNAMIC
+    );
 
-    if (d[rb.base.r][rb.base.c] >= INF)
+    HeadingDir baseDir = DIR_NORTH;
+    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
+
+    if (costToBase >= INF)
     {
         clearRobotPath(rb);
         return {};
     }
 
-    rb.path = tracePath(rb.pos, rb.base, trace);
+    rb.path = tracePathOriented(rb.pos, startDir, rb.base, baseDir);
 
     if ((int)rb.path.size() <= 1)
     {
@@ -341,7 +451,7 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
             rb.base,
             "return_to_base",
             1,
-            d[rb.base.r][rb.base.c],
+            costToBase,
             0
         );
 
@@ -350,7 +460,8 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
             rb,
             "return_path_built",
             true,
-            "path_cost=" + std::to_string(pathCost(rb.path)) +
+            "path_cost=" + std::to_string(costToBase) +
+            " arrival_dir=" + std::to_string((int)baseDir) +
             " first_step=" + cellText(rb.path[rb.pathID]) +
             " path=" + compactPathText(rb.path)
         );
@@ -370,15 +481,24 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
     if (isAtBase(rb))
         return makeAlreadyAtGoalResult(rb);
 
-    dijkstra(rb.pos, d, trace);
+    HeadingDir startDir = currentHeadingDir(rb);
+    dijkstraOriented(
+        rb.pos,
+        startDir,
+        PlannerObstacleMode::RESPECT_DYNAMIC
+    );
 
-    if (d[rb.base.r][rb.base.c] >= INF)
+    HeadingDir baseDir = DIR_NORTH;
+    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
+
+    if (costToBase >= INF)
     {
         clearRobotPath(rb);
         return {};
     }
 
-    vector<Cell> candidate = tracePath(rb.pos, rb.base, trace);
+    vector<Cell> candidate =
+        tracePathOriented(rb.pos, startDir, rb.base, baseDir);
 
     if ((int)candidate.size() <= 1)
     {
@@ -404,7 +524,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
             rb.base,
             "dynamic_obstacle_blocked_return",
             1,
-            d[rb.base.r][rb.base.c],
+            costToBase,
             0
         );
 
@@ -413,7 +533,8 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
             rb,
             "return_detour_path_built",
             true,
-            "path_cost=" + std::to_string(pathCost(rb.path)) +
+            "path_cost=" + std::to_string(costToBase) +
+            " arrival_dir=" + std::to_string((int)baseDir) +
             " first_step=" + cellText(rb.path[rb.pathID]) +
             " path=" + compactPathText(rb.path)
         );
@@ -447,8 +568,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     {
         rank++;
 
-        int costToBase =
-            estimateCostFromTargetToBase(candidate.target, rb);
+        int costToBase = estimateCostFromTargetToBase(candidate, rb);
 
         bool fullBatteryFeasible = canFullBatteryVisitTargetAndReturn(
             rb,
@@ -559,9 +679,19 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             currentEnergyFeasible
         );
 
-        dijkstra(rb.pos, d, trace);
+        HeadingDir startDir = currentHeadingDir(rb);
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
 
-        rb.path = tracePath(rb.pos, candidate.target, trace);
+        rb.path = tracePathOriented(
+            rb.pos,
+            startDir,
+            candidate.target,
+            candidate.arrivalDir
+        );
 
         if (rb.path.empty())
         {
@@ -586,7 +716,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
 
         if (ctx != nullptr)
         {
-            PathValueStats stats = evaluatePathValue(rb.path);
+            PathValueStats stats = evaluatePathValue(rb.path, startDir);
 
             logDecisionPath(
                 *ctx,
@@ -594,6 +724,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                 "coverage_path_built",
                 true,
                 "path_cost=" + std::to_string(stats.pathCost) +
+                " arrival_dir=" + std::to_string((int)candidate.arrivalDir) +
                 " new_cells=" + std::to_string(stats.newCells) +
                 " revisits=" + std::to_string(stats.revisits) +
                 " blocked_cells=" + std::to_string(stats.blockedCells) +

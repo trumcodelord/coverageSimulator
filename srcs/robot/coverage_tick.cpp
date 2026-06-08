@@ -20,8 +20,15 @@ namespace
 {
     int estimateCostToBase(const Robot &rb)
     {
-        dijkstra(rb.pos, d, trace);
-        return d[rb.base.r][rb.base.c];
+        HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
+
+        return bestOrientedDistanceTo(rb.base);
     }
 
     bool shouldRobotReturnForEnergy(const Robot &rb)
