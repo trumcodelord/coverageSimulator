@@ -13,7 +13,6 @@
 #include "robot_motion.h"
 #include "tactical_yield.h"
 
-#include <queue>
 #include <vector>
 
 using namespace std;
@@ -22,48 +21,28 @@ namespace
 {
     int estimateCostToBase(const Robot &rb)
     {
-        dijkstra(rb.pos, d, trace);
-        return d[rb.base.r][rb.base.c];
+        HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
+
+        return bestOrientedDistanceTo(rb.base);
     }
 
     int estimateStaticCostToBase(const Robot &rb)
     {
-        static int staticDist[1001][1001];
+        HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
 
-        for (int i = 1; i <= rows; i++)
-        {
-            for (int j = 1; j <= cols; j++)
-                staticDist[i][j] = INF;
-        }
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::IGNORE_DYNAMIC
+        );
 
-        queue<Cell> q;
-        staticDist[rb.pos.r][rb.pos.c] = 0;
-        q.push(rb.pos);
-
-        while (!q.empty())
-        {
-            Cell u = q.front();
-            q.pop();
-
-            for (int k = 1; k <= 4; k++)
-            {
-                Cell v = {u.r + dr[k], u.c + dc[k]};
-
-                if (!inBounds(v.r, v.c))
-                    continue;
-
-                if (isStaticBlocked(v.r, v.c))
-                    continue;
-
-                if (staticDist[v.r][v.c] <= staticDist[u.r][u.c] + 1)
-                    continue;
-
-                staticDist[v.r][v.c] = staticDist[u.r][u.c] + 1;
-                q.push(v);
-            }
-        }
-
-        return staticDist[rb.base.r][rb.base.c];
+        return bestOrientedDistanceTo(rb.base);
     }
 
     bool canReturnAfterDynamicObstacleClears(const Robot &rb)
@@ -89,9 +68,19 @@ namespace
         if (!yield.found)
             return false;
 
-        dijkstra(rb.pos, d, trace);
+        HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
 
-        vector<Cell> yieldPath = tracePath(rb.pos, yield.target, trace);
+        dijkstraOriented(
+            rb.pos,
+            startDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
+
+        vector<Cell> yieldPath = traceBestPathOriented(
+            rb.pos,
+            startDir,
+            yield.target
+        );
 
         if ((int)yieldPath.size() <= 1)
             return false;
