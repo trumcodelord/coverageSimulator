@@ -1,44 +1,56 @@
 #include "tactical_yield.h"
 #include "planner.h"
 
-static bool isNearDynamicObstacle(Cell p)
+#include <vector>
+
+namespace
 {
-    for (int dr = -1; dr <= 1; dr++)
+    struct OrientedYieldCandidate
     {
-        for (int dc = -1; dc <= 1; dc++)
+        Cell target = {0, 0};
+        int costFromRobot = INF;
+        HeadingDir arrivalDir = DIR_NORTH;
+    };
+
+    bool isNearDynamicObstacle(Cell p)
+    {
+        for (int dr = -1; dr <= 1; dr++)
         {
-            int r = p.r + dr;
-            int c = p.c + dc;
+            for (int dc = -1; dc <= 1; dc++)
+            {
+                int r = p.r + dr;
+                int c = p.c + dc;
 
-            if (!inBounds(r, c))
-                continue;
+                if (!inBounds(r, c))
+                    continue;
 
-            if (isDynamicBlockedCell(r, c))
-                return true;
+                if (isDynamicBlockedCell(r, c))
+                    return true;
+            }
         }
+
+        return false;
     }
 
-    return false;
-}
+    bool isUsefulYieldCell(const Robot &rb, Cell p)
+    {
+        if (!inBounds(p.r, p.c))
+            return false;
 
-static bool isUsefulYieldCell(const Robot &rb, Cell p)
-{
-    if (!inBounds(p.r, p.c))
-        return false;
+        if (!isFree(p.r, p.c))
+            return false;
 
-    if (!isFree(p.r, p.c))
-        return false;
+        if (!isCovered(p.r, p.c))
+            return false;
 
-    if (!isCovered(p.r, p.c))
-        return false;
+        if (isNearDynamicObstacle(p))
+            return false;
 
-    if (isNearDynamicObstacle(p))
-        return false;
+        if (p == rb.pos)
+            return false;
 
-    if (p == rb.pos)
-        return false;
-
-    return true;
+        return true;
+    }
 }
 
 TacticalYieldResult findTacticalYieldCell(
@@ -46,8 +58,15 @@ TacticalYieldResult findTacticalYieldCell(
     const TacticalYieldConfig &config
 ) {
     TacticalYieldResult result;
+    std::vector<OrientedYieldCandidate> candidates;
 
-    dijkstra(rb.pos, d, trace);
+    HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+
+    dijkstraOriented(
+        rb.pos,
+        startDir,
+        PlannerObstacleMode::RESPECT_DYNAMIC
+    );
 
     for (int r = 1; r <= rows; r++)
     {
@@ -58,32 +77,51 @@ TacticalYieldResult findTacticalYieldCell(
             if (!isUsefulYieldCell(rb, candidate))
                 continue;
 
-            int costFromRobot = d[r][c];
+            HeadingDir arrivalDir = DIR_NORTH;
+            int costFromRobot =
+                bestOrientedDistanceTo(candidate, &arrivalDir);
 
-            if (costFromRobot <= 0 || costFromRobot > config.maxCandidateCost)
-                continue;
-
-            dijkstra(candidate, d, trace);
-            int costToBase = d[rb.base.r][rb.base.c];
-
-            if (costToBase >= INF)
+            if (costFromRobot <= 0 ||
+                costFromRobot > config.maxCandidateCost)
             {
-                dijkstra(rb.pos, d, trace);
                 continue;
             }
 
-            int score = costFromRobot + costToBase;
+            candidates.push_back({
+                candidate,
+                costFromRobot,
+                arrivalDir
+            });
+        }
+    }
 
-            if (!result.found || score < result.score)
-            {
-                result.found = true;
-                result.target = candidate;
-                result.costFromRobot = costFromRobot;
-                result.costToBase = costToBase;
-                result.score = score;
-            }
+    for (const OrientedYieldCandidate &candidate : candidates)
+    {
+        dijkstraOriented(
+            candidate.target,
+            candidate.arrivalDir,
+            PlannerObstacleMode::RESPECT_DYNAMIC
+        );
 
-            dijkstra(rb.pos, d, trace);
+        int costToBase = bestOrientedDistanceTo(rb.base);
+
+        if (costToBase >= INF)
+            continue;
+
+        long long score =
+            (long long)candidate.costFromRobot +
+            (long long)costToBase;
+
+        if (score >= INF)
+            continue;
+
+        if (!result.found || score < result.score)
+        {
+            result.found = true;
+            result.target = candidate.target;
+            result.costFromRobot = candidate.costFromRobot;
+            result.costToBase = costToBase;
+            result.score = (int)score;
         }
     }
 

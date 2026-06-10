@@ -31,6 +31,40 @@ namespace behavior_log_detail
             file.flush();
         }
     }
+
+    inline std::string sanitizeLogName(std::string name)
+    {
+        for (char &ch : name)
+        {
+            if (ch == '/' || ch == '\\' || ch == ':' ||
+                ch == ' ' || ch == '\t')
+            {
+                ch = '_';
+            }
+        }
+
+        return name;
+    }
+}
+
+inline void initBehaviorLogAtPath(const std::string &path)
+{
+    namespace fs = std::filesystem;
+
+    fs::path logPath(path);
+    fs::path parent = logPath.parent_path();
+
+    if (!parent.empty())
+        fs::create_directories(parent);
+
+    behavior_log_detail::currentLogPath() = path;
+
+    std::ofstream &file = behavior_log_detail::logFile();
+
+    if (file.is_open())
+        file.close();
+
+    file.open(path, std::ios::out | std::ios::trunc);
 }
 
 inline void initBehaviorLog(const std::string &mapName)
@@ -39,21 +73,10 @@ inline void initBehaviorLog(const std::string &mapName)
 
     fs::create_directories("logs");
 
-    std::string safeName = mapName;
-    for (char &ch : safeName)
-    {
-        if (ch == '/' || ch == '\\' || ch == ':' || ch == ' ' || ch == '\t')
-            ch = '_';
-    }
+    std::string safeName =
+        behavior_log_detail::sanitizeLogName(mapName);
 
-    behavior_log_detail::currentLogPath() = "logs/" + safeName + ".log";
-
-    std::ofstream &file = behavior_log_detail::logFile();
-
-    if (file.is_open())
-        file.close();
-
-    file.open(behavior_log_detail::currentLogPath(), std::ios::out | std::ios::trunc);
+    initBehaviorLogAtPath("logs/" + safeName + ".log");
 }
 
 inline void closeBehaviorLog()

@@ -5,9 +5,9 @@
 #include "grid.h"
 #include "input.h"
 #include "opencv.h"
+#include "run_artifacts.h"
 #include "stats.h"
 
-#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -19,16 +19,6 @@ using namespace std;
 namespace
 {
     namespace fs = std::filesystem;
-
-    string sanitizePathToken(string s)
-    {
-        for (char &ch : s)
-        {
-            if (ch == '/' || ch == '\\' || ch == ':' || ch == ' ' || ch == '\t')
-                ch = '_';
-        }
-        return s;
-    }
 
     string resolveInputFile(const string &mapName)
     {
@@ -54,8 +44,11 @@ namespace
 
                 fs::path p = entry.path();
 
-                if (p.filename() == mapName || p.filename() == mapName + ".txt")
+                if (p.filename() == mapName ||
+                    p.filename() == mapName + ".txt")
+                {
                     return p.string();
+                }
 
                 if (p.stem() == mapName)
                     return p.string();
@@ -82,8 +75,6 @@ int main()
         return 1;
     }
 
-    initBehaviorLog(mapName);
-
     try
     {
         readGrid(fin);
@@ -91,7 +82,24 @@ int main()
     catch (const exception &e)
     {
         cerr << "Loi doc input: " << e.what() << '\n';
-        closeBehaviorLog();
+        return 1;
+    }
+
+    RunArtifacts artifacts;
+
+    try
+    {
+        artifacts = beginRunArtifacts(
+            mapName,
+            filename,
+            "orientation_aware_dijkstra"
+        );
+
+        initBehaviorLogAtPath(artifacts.logPath);
+    }
+    catch (const exception &e)
+    {
+        cerr << "Loi tao thu muc run: " << e.what() << '\n';
         return 1;
     }
 
@@ -104,7 +112,10 @@ int main()
         "start",
         "Start simulation on selected map.",
         "map=" + mapName +
-        " input=" + filename
+        " input=" + filename +
+        " run_id=" + artifacts.runId +
+        " run_directory=" + artifacts.runDirectory +
+        " planner=" + artifacts.plannerName
     );
 
     logReadableEvent(
@@ -129,24 +140,15 @@ int main()
 
     CoverageStats s = collectStats(rb);
 
-    string safeMapName = sanitizePathToken(mapName);
-    string outcome = missionOutcomeName(s.missionOutcome);
-
-    string screenshotPath =
-        "results/screenshots/" + safeMapName + "_" + outcome + ".png";
-
     CoverageContext finalCtx;
     drawFrame(rb, finalCtx, true, 0);
-    saveCurrentFrame(screenshotPath);
+
+    bool screenshotSaved =
+        saveCurrentFrame(artifacts.screenshotPath);
 
     printStats(s);
-    logStats(s, "coverage_log.txt");
-    appendBenchmarkCsv(
-        s,
-        "results/benchmark_results.csv",
-        mapName,
-        screenshotPath
-    );
+
+    string outcome = missionOutcomeName(s.missionOutcome);
 
     logReadableEvent(
         s.missionOutcome == MISSION_SUCCESS ? "INFO" : "WARN",
@@ -158,15 +160,36 @@ int main()
         "outcome=" + outcome +
         " coverage=" + to_string(s.coverageRate) +
         " steps=" + to_string(s.totalSteps) +
+        " energy_used=" + to_string(s.energyUsed) +
         " returns=" + to_string(s.returnCount) +
         " recharges=" + to_string(s.rechargeCount) +
         " final_at_base=" + boolText(s.finalAtBase) +
-        " screenshot=" + screenshotPath
+        " screenshot_saved=" + boolText(screenshotSaved) +
+        " screenshot=" + artifacts.screenshotPath
     );
 
-    logBehavior("[SYSTEM] Behavior log saved to " + behaviorLogPath());
+    try
+    {
+        finalizeRunArtifacts(
+            artifacts,
+            s,
+            configuredMaxEnergy(),
+            screenshotSaved
+        );
+
+        logBehavior(
+            "[SYSTEM] Run artifacts saved to " +
+            artifacts.runDirectory
+        );
+    }
+    catch (const exception &e)
+    {
+        logBehavior(
+            "[SYSTEM] Khong the hoan tat run artifacts: " +
+            string(e.what())
+        );
+    }
 
     closeBehaviorLog();
-
     return 0;
 }
