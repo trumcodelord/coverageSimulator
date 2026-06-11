@@ -1,5 +1,6 @@
 #pragma once
 
+#include "energy_reserve_policy.h"
 #include "types.h"
 
 struct EnergyCostConfig
@@ -8,13 +9,6 @@ struct EnergyCostConfig
     int alertPenalty = 0;
     int returnPenalty = 0;
     int finalPushPenalty = 0;
-};
-
-struct ReturnEnergyPolicy
-{
-    int minReturnMargin = 10;
-    int returnMarginDivisor = 3;
-    int minEmergencyEnergy = 3;
 };
 
 int movementEnergyCostForStep(
@@ -37,27 +31,3 @@ int computeMoveEnergyCost(
 );
 
 void consumeEnergy(Robot &rb, int amount);
-
-int returnMarginForCost(
-    int costToBase,
-    const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
-);
-
-bool shouldReturnForEnergy(
-    const Robot &rb,
-    int costToBase,
-    const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
-);
-
-bool isCriticalEnergy(
-    const Robot &rb,
-    int costToBase,
-    const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
-);
-
-bool canVisitTargetAndReturn(
-    const Robot &rb,
-    int costToTarget,
-    int costTargetToBase,
-    const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
-);

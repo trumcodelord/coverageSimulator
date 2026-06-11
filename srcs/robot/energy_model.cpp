@@ -9,11 +9,6 @@ using namespace std;
 
 namespace
 {
-    bool isAtBase(const Robot &rb)
-    {
-        return rb.pos == rb.base;
-    }
-
     double angleForMove(Cell from, Cell to)
     {
         int dr = to.r - from.r;
@@ -45,7 +40,7 @@ namespace
 }
 
 int movementEnergyCostForStep(
-    const Robot &rb,
+    const Robot &,
     Cell next,
     RobotMode mode,
     const EnergyCostConfig &config
@@ -110,66 +105,4 @@ void consumeEnergy(Robot &rb, int amount)
 
     rb.energy = max(0, rb.energy - amount);
     rb.totalEnergyUsed += amount;
-}
-
-int returnMarginForCost(
-    int costToBase,
-    const ReturnEnergyPolicy &policy
-) {
-    if (costToBase >= INF)
-        return INF;
-
-    return max(
-        policy.minReturnMargin,
-        costToBase / policy.returnMarginDivisor
-    );
-}
-
-bool shouldReturnForEnergy(
-    const Robot &rb,
-    int costToBase,
-    const ReturnEnergyPolicy &policy
-) {
-    if (isAtBase(rb))
-        return false;
-
-    if (costToBase >= INF)
-        return false;
-
-    return rb.energy <= costToBase + returnMarginForCost(costToBase, policy);
-}
-
-bool isCriticalEnergy(
-    const Robot &rb,
-    int costToBase,
-    const ReturnEnergyPolicy &policy
-) {
-    if (isAtBase(rb))
-        return false;
-
-    if (costToBase >= INF)
-        return rb.energy <= policy.minReturnMargin;
-
-    return rb.energy <= costToBase ||
-           rb.energy <= policy.minEmergencyEnergy;
-}
-
-bool canVisitTargetAndReturn(
-    const Robot &rb,
-    int costToTarget,
-    int costTargetToBase,
-    const ReturnEnergyPolicy &policy
-) {
-    if (costToTarget < 0 || costTargetToBase < 0)
-        return false;
-
-    if (costToTarget >= INF || costTargetToBase >= INF)
-        return false;
-
-    long long requiredEnergy =
-        (long long)costToTarget +
-        (long long)costTargetToBase +
-        (long long)returnMarginForCost(costTargetToBase, policy);
-
-    return rb.energy >= requiredEnergy;
 }
