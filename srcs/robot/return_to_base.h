@@ -6,7 +6,7 @@
 void enterReturnToBase(
     CoverageContext &ctx,
     Robot &rb,
-    const char *message = "[ENERGY] Nang luong thap. Quay ve base."
+    const char *message = "[RETURN] Quay ve base."
 );
 
 void waitReturnToBase(

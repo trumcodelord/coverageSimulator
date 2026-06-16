@@ -4,6 +4,7 @@
 #include "environment.h"
 #include "grid.h"
 #include "input.h"
+#include "log_cleanup.h"
 #include "opencv.h"
 #include "run_artifacts.h"
 #include "stats.h"
@@ -191,5 +192,8 @@ int main()
     }
 
     closeBehaviorLog();
+
+    cleanupOrphanLogDirectories("tests", "logs");
+
     return 0;
 }

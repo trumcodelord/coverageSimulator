@@ -55,7 +55,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            logBehavior("[ENERGY] Nang luong thap. Dang sac pin.");
+            logBehavior("[ENERGY] Dang sac pin.");
             clearRobotPath(rb);
             switchMissionMode(ctx, RECHARGING);
             setCoverageCooldown(ctx, rechargeWaitTicks());
@@ -65,7 +65,7 @@ namespace
         enterReturnToBase(
             ctx,
             rb,
-            "[ENERGY] Nang luong thap. Quay ve base."
+            "[ENERGY] Can them nang luong. Quay ve base."
         );
     }
 

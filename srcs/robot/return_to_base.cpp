@@ -19,19 +19,6 @@ using namespace std;
 
 namespace
 {
-    int estimateCostToBase(const Robot &rb)
-    {
-        HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
-
-        dijkstraOriented(
-            rb.pos,
-            startDir,
-            PlannerObstacleMode::RESPECT_DYNAMIC
-        );
-
-        return bestOrientedDistanceTo(rb.base);
-    }
-
     int estimateStaticCostToBase(const Robot &rb)
     {
         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
@@ -232,7 +219,6 @@ void enterReturnToBase(
 
     logBehavior(message);
 
-    int costToBase = estimateCostToBase(rb);
     logRobotEvent(
         "WARN",
         "ENERGY",
@@ -240,8 +226,7 @@ void enterReturnToBase(
         "Robot switches to return-to-base because continuing coverage is not safe or mission requires return.",
         rb,
         ctx.mode,
-        "cost_to_base=" + std::to_string(costToBase) +
-        " action=return_to_base"
+        "cost_to_base=deferred_to_path_builder action=return_to_base"
     );
 
     rb.returnCount++;
