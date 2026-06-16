@@ -39,6 +39,35 @@ When analyzing project work, separate:
 - Proposals: possible actions or designs.
 - Unknowns: missing or unverified information.
 
+## Project-specific truth guardrail
+
+For coverageSimulator, the current simulation assumes that the full grid map is known from the input file.
+
+Therefore, do not use "unknown map", "online mapping", or "the robot does not know the full map" as an argument to justify design trade-offs, unless the project is explicitly changed later to support unknown-map exploration.
+
+Current valid facts:
+
+- The input file provides the map before the mission starts.
+- Weighted terrain cells can be provided by the input format.
+- Static walls can be provided by the input format.
+- Dynamic obstacle declarations can be provided by the input format.
+- The robot start/base position is provided by the input format.
+
+Valid trade-off discussions should focus on actual project constraints such as:
+
+- global energy optimality versus practical mission policy;
+- coverage ordering versus return-to-base safety;
+- static coverage efficiency versus dynamic obstacle response;
+- energy efficiency versus recharge/return behavior;
+- optimization strength versus explainability and reproducibility;
+- algorithmic complexity versus graduation-project scope.
+
+Invalid argument for the current project:
+
+- Claiming that a competing algorithm requires full-map knowledge while coverageSimulator does not.
+
+This is false for the current implementation because coverageSimulator also receives the full map from input.
+
 ## Reproducibility and traceability
 
 Important work should preserve:
