@@ -19,18 +19,7 @@ cmake-build-*/
 *.cbp
 
 # Generated runtime files
-coverage_log.txt
-run_log.txt
-debug_log.txt
-results/
-outputs/
-screenshots/
-videos/
-captures/
-recordings/
-*.log
-*.tmp
-*.temp
+logs
 
 # OS files
 .DS_Store
