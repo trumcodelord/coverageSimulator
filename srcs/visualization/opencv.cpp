@@ -15,7 +15,7 @@ namespace
 {
     Mat lastFrame;
     bool showCoordinateHeaders = false;
-    bool testSpeedEnabled = false;
+    int speedMultiplier = 1;
 
     void ensureParentDirectory(const std::string &path)
     {
@@ -29,6 +29,16 @@ namespace
     bool isSpaceKey(int key)
     {
         return key == 32;
+    }
+
+    void cycleSpeed()
+    {
+        if (speedMultiplier == 1)
+            speedMultiplier = 5;
+        else if (speedMultiplier == 5)
+            speedMultiplier = 10;
+        else
+            speedMultiplier = 1;
     }
 
     void handleKeyboard(int key)
@@ -51,12 +61,14 @@ namespace
 
         if (isSpaceKey(key))
         {
-            testSpeedEnabled = !testSpeedEnabled;
+            cycleSpeed();
 
             pushHUDEvent(
-                testSpeedEnabled
-                    ? "[SPEED] Da bat toc do 5x."
-                    : "[SPEED] Da ve toc do 1x."
+                speedMultiplier == 1
+                    ? "[SPEED] Da ve toc do 1x."
+                    : speedMultiplier == 5
+                        ? "[SPEED] Da bat toc do 5x."
+                        : "[SPEED] Da bat toc do 10x."
             );
 
             return;
@@ -133,10 +145,10 @@ bool saveCurrentFrame(const std::string &filename)
 
 int testSpeedMultiplier()
 {
-    return testSpeedEnabled ? 5 : 1;
+    return speedMultiplier;
 }
 
 bool isTestSpeedEnabled()
 {
-    return testSpeedEnabled;
+    return speedMultiplier > 1;
 }

@@ -1,0 +1,307 @@
+diff --git a/srcs/robot/planner.h b/srcs/robot/planner.h
+index 69be19c..0000000 100644
+--- a/srcs/robot/planner.h
++++ b/srcs/robot/planner.h
+@@ -45,6 +45,14 @@ void dijkstraOriented(
+     PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC
+ );
+
++int dijkstraOrientedToGoal(
++    Cell start,
++    HeadingDir startDir,
++    Cell goal,
++    PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC,
++    HeadingDir *bestGoalDir = nullptr
++);
++
+ int orientedDistanceTo(Cell goal, HeadingDir goalDir);
+ int bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir = nullptr);
+
+diff --git a/srcs/robot/planner.cpp b/srcs/robot/planner.cpp
+index b39e646..0000000 100644
+--- a/srcs/robot/planner.cpp
++++ b/srcs/robot/planner.cpp
+@@ -266,6 +266,100 @@ void dijkstraOriented(
+     }
+ }
+
++int dijkstraOrientedToGoal(
++    Cell start,
++    HeadingDir startDir,
++    Cell goal,
++    PlannerObstacleMode obstacleMode,
++    HeadingDir *bestGoalDir
++) {
++    if (bestGoalDir != nullptr)
++        *bestGoalDir = DIR_NORTH;
++
++    for (int r = 1; r <= rows; r++)
++    {
++        for (int c = 1; c <= cols; c++)
++        {
++            for (int dir = 0; dir < 4; dir++)
++            {
++                orientedDist[r][c][dir] = INF;
++                orientedTrace[r][c][dir] = {0, 0, -1};
++            }
++        }
++    }
++
++    if (!inBounds(start.r, start.c) ||
++        !inBounds(goal.r, goal.c) ||
++        isStaticBlocked(start.r, start.c) ||
++        isStaticBlocked(goal.r, goal.c) ||
++        !isValidDirection((int)startDir))
++    {
++        return INF;
++    }
++
++    using QueueNode = tuple<int, int, int, int>;
++    priority_queue<QueueNode, vector<QueueNode>, greater<QueueNode>> pq;
++
++    orientedDist[start.r][start.c][startDir] = 0;
++    pq.push({0, start.r, start.c, (int)startDir});
++
++    while (!pq.empty())
++    {
++        auto [du, ur, uc, currentDirValue] = pq.top();
++        pq.pop();
++
++        if (du != orientedDist[ur][uc][currentDirValue])
++            continue;
++
++        if (ur == goal.r && uc == goal.c)
++        {
++            if (bestGoalDir != nullptr)
++                *bestGoalDir = static_cast<HeadingDir>(currentDirValue);
++
++            return du;
++        }
++
++        HeadingDir currentDir = static_cast<HeadingDir>(currentDirValue);
++        int currentTerrainCost = baseTerrainCostAt(ur, uc);
++
++        if (currentTerrainCost >= INF)
++            continue;
++
++        for (int nextDirValue = 0; nextDirValue < 4; nextDirValue++)
++        {
++            int vr = ur + ORIENTED_DR[nextDirValue];
++            int vc = uc + ORIENTED_DC[nextDirValue];
++
++            int movementCost = movementTerrainCostAt(
++                vr,
++                vc,
++                obstacleMode
++            );
++
++            if (movementCost >= INF)
++                continue;
++
++            HeadingDir nextDir = static_cast<HeadingDir>(nextDirValue);
++            int turns = quarterTurnsBetween(currentDir, nextDir);
++
++            long long candidateCost =
++                (long long)du +
++                (long long)movementCost +
++                (long long)turns * currentTerrainCost;
++
++            if (candidateCost >= INF)
++                continue;
++
++            if (candidateCost >= orientedDist[vr][vc][nextDirValue])
++                continue;
++
++            orientedDist[vr][vc][nextDirValue] = (int)candidateCost;
++            orientedTrace[vr][vc][nextDirValue] = {
++                (short)ur,
++                (short)uc,
++                (signed char)currentDirValue
++            };
++
++            pq.push({
++                (int)candidateCost,
++                vr,
++                vc,
++                nextDirValue
++            });
++        }
++    }
++
++    return INF;
++}
++
+ int orientedDistanceTo(Cell goal, HeadingDir goalDir)
+ {
+     if (!inBounds(goal.r, goal.c) || !isValidDirection((int)goalDir))
+diff --git a/srcs/robot/coverage_tick.cpp b/srcs/robot/coverage_tick.cpp
+index 7396a5e..0000000 100644
+--- a/srcs/robot/coverage_tick.cpp
++++ b/srcs/robot/coverage_tick.cpp
+@@ -24,14 +24,12 @@ namespace
+     int estimateCostToBase(const Robot &rb)
+     {
+         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+-
+-        dijkstraOriented(
++        return dijkstraOrientedToGoal(
+             rb.pos,
+             startDir,
++            rb.base,
+             PlannerObstacleMode::RESPECT_DYNAMIC
+         );
+-
+-        return bestOrientedDistanceTo(rb.base);
+     }
+
+     bool shouldRobotReturnForEnergy(const Robot &rb)
+diff --git a/srcs/robot/return_to_base.cpp b/srcs/robot/return_to_base.cpp
+index f5ae5da..0000000 100644
+--- a/srcs/robot/return_to_base.cpp
++++ b/srcs/robot/return_to_base.cpp
+@@ -24,14 +24,12 @@ namespace
+     int estimateStaticCostToBase(const Robot &rb)
+     {
+         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+-
+-        dijkstraOriented(
++        return dijkstraOrientedToGoal(
+             rb.pos,
+             startDir,
++            rb.base,
+             PlannerObstacleMode::IGNORE_DYNAMIC
+         );
+-
+-        return bestOrientedDistanceTo(rb.base);
+     }
+
+     bool canReturnAfterDynamicObstacleClears(const Robot &rb)
+@@ -46,13 +44,19 @@ namespace
+
+         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
+
+-        dijkstraOriented(
++        HeadingDir yieldDir = DIR_NORTH;
++        int yieldCost = dijkstraOrientedToGoal(
+             rb.pos,
+             startDir,
+-            PlannerObstacleMode::RESPECT_DYNAMIC
++            yield.target,
++            PlannerObstacleMode::RESPECT_DYNAMIC,
++            &yieldDir
+         );
+
+-        vector<Cell> yieldPath = traceBestPathOriented(
++        if (yieldCost >= INF)
++            return false;
++
++        vector<Cell> yieldPath = tracePathOriented(
+             rb.pos,
+             startDir,
+-            yield.target
++            yield.target,
++            yieldDir
+         );
+diff --git a/srcs/robot/path_builder.cpp b/srcs/robot/path_builder.cpp
+index ae70b82..0000000 100644
+--- a/srcs/robot/path_builder.cpp
++++ b/srcs/robot/path_builder.cpp
+@@ -175,14 +175,12 @@ namespace
+         const Robot &rb
+     ) {
+-        dijkstraOriented(
++        return dijkstraOrientedToGoal(
+             candidate.target,
+             candidate.arrivalDir,
++            rb.base,
+             PlannerObstacleMode::RESPECT_DYNAMIC
+         );
+-
+-        return bestOrientedDistanceTo(rb.base);
+     }
+
+     bool canFullBatteryVisitTargetAndReturn(
+@@ -503,16 +501,12 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
+
+     HeadingDir startDir = currentHeadingDir(rb);
+-    dijkstraOriented(
+-        rb.pos,
+-        startDir,
+-        PlannerObstacleMode::RESPECT_DYNAMIC
+-    );
+-
+     HeadingDir baseDir = DIR_NORTH;
+-    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
++    int costToBase = dijkstraOrientedToGoal(
++        rb.pos,
++        startDir,
++        rb.base,
++        PlannerObstacleMode::RESPECT_DYNAMIC,
++        &baseDir
++    );
+
+     if (costToBase >= INF)
+     {
+@@ -568,16 +562,12 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
+
+     HeadingDir startDir = currentHeadingDir(rb);
+-    dijkstraOriented(
+-        rb.pos,
+-        startDir,
+-        PlannerObstacleMode::RESPECT_DYNAMIC
+-    );
+-
+     HeadingDir baseDir = DIR_NORTH;
+-    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
++    int costToBase = dijkstraOrientedToGoal(
++        rb.pos,
++        startDir,
++        rb.base,
++        PlannerObstacleMode::RESPECT_DYNAMIC,
++        &baseDir
++    );
+
+     if (costToBase >= INF)
+     {
+@@ -682,16 +672,18 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
+         );
+
+         HeadingDir startDir = currentHeadingDir(rb);
+-        dijkstraOriented(
++        HeadingDir selectedArrivalDir = DIR_NORTH;
++        int selectedCost = dijkstraOrientedToGoal(
+             rb.pos,
+             startDir,
+-            PlannerObstacleMode::RESPECT_DYNAMIC
++            candidate.target,
++            PlannerObstacleMode::RESPECT_DYNAMIC,
++            &selectedArrivalDir
+         );
+
+-        rb.path = tracePathOriented(
++        if (selectedCost >= INF)
++        {
++            clearRobotPath(rb);
++            continue;
++        }
++
++        rb.path = tracePathOriented(
+             rb.pos,
+             startDir,
+             candidate.target,
+-            candidate.arrivalDir
++            selectedArrivalDir
+         );
+diff --git a/srcs/visualization/opencv.cpp b/srcs/visualization/opencv.cpp
+index 1e6e37f..0000000 100644
+--- a/srcs/visualization/opencv.cpp
++++ b/srcs/visualization/opencv.cpp
+@@ -110,7 +110,7 @@ void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int d
+     paintRobot(canvas, rb, ctx);
+     paintHUD(canvas, rb, delay);
+
+-    lastFrame = canvas.clone();
++    lastFrame = canvas;
+
+     imshow(visualWindowName(), canvas);
+ }
