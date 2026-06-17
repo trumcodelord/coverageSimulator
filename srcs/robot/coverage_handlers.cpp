@@ -10,6 +10,8 @@
 #include "return_to_base.h"
 #include "robot_lifecycle.h"
 
+#include <vector>
+
 using namespace std;
 
 namespace
@@ -20,8 +22,16 @@ namespace
         ctx.holdTick = 0;
         ctx.retryCount = 0;
         ctx.alertFailCount = 0;
+        ctx.recoveryReplanTick = 0;
         ctx.needWaitDraw = false;
         ctx.actionCooldownTicks = 0;
+    }
+
+    bool isRecoveryMode(RobotMode mode)
+    {
+        return mode == ALERT ||
+               mode == HOLD_SAFE ||
+               mode == RETURN_TO_BASE;
     }
 
     void enterSafeTerminationReturn(
@@ -45,6 +55,28 @@ namespace
 
         enterReturnToBase(ctx, rb, message);
         ctx.returnToTerminate = true;
+    }
+
+    void enterRecoveryReturn(
+        CoverageContext &ctx,
+        Robot &rb,
+        const char *message
+    ) {
+        resetRecoveryCounters(ctx);
+        ctx.returnToTerminate = false;
+
+        if (isAtBase(rb))
+        {
+            logBehavior(message);
+            clearRobotPath(rb);
+            switchMissionMode(ctx, RECHARGING);
+            setCoverageCooldown(ctx, rechargeWaitTicks());
+            setHUDState("RECHARGING");
+            return;
+        }
+
+        enterReturnToBase(ctx, rb, message);
+        ctx.returnToTerminate = false;
     }
 
     void handleCurrentEnergyLowForCoverage(
@@ -93,6 +125,64 @@ void printRetryMessage(const char *msg, int retryCount)
             to_string(maxRetryCount()) + "."
         );
     }
+}
+
+bool tryRecoveryReplanToCoverage(Robot &rb, CoverageContext &ctx)
+{
+    if (ctx.shouldStop || ctx.needWaitDraw)
+        return false;
+
+    if (!isRecoveryMode(ctx.mode))
+        return false;
+
+    if (ctx.coverageComplete || ctx.returnToTerminate)
+        return false;
+
+    if (isAtBase(rb))
+        return false;
+
+    // In ALERT/HOLD_SAFE, an existing path usually means the robot is already
+    // executing a recovery attempt. In RETURN_TO_BASE, however, an existing
+    // return path must not prevent the robot from listening for a newly opened
+    // coverage opportunity.
+    if (ctx.mode != RETURN_TO_BASE && rb.pathID < (int)rb.path.size())
+        return false;
+
+    ctx.recoveryReplanTick++;
+
+    if (ctx.recoveryReplanTick < recoveryReplanInterval())
+        return false;
+
+    ctx.recoveryReplanTick = 0;
+
+    vector<Cell> oldPath = rb.path;
+    int oldPathID = rb.pathID;
+
+    PathBuildResult recovered = rebuildPathToNearestUncoveredTarget(rb, &ctx);
+
+    if (!recovered.success)
+    {
+        // A failed coverage probe must not destroy an active return path.
+        rb.path = oldPath;
+        rb.pathID = oldPathID;
+        return false;
+    }
+
+    logBehavior("[RECOVER] Moi truong da mo duong. Thu tiep tuc coverage.");
+
+    ctx.retryCount = 0;
+    ctx.alertFailCount = 0;
+    ctx.holdTick = 0;
+    ctx.holdCycleCount = 0;
+    ctx.returnWaitCount = 0;
+    ctx.stableStepCount = 0;
+    ctx.actionCooldownTicks = 0;
+    ctx.needWaitDraw = false;
+    ctx.returnToTerminate = false;
+
+    switchMissionMode(ctx, ALERT);
+    setHUDState("RECOVER");
+    return true;
 }
 
 void handleWaitForCommand(Robot &rb, CoverageContext &ctx)
@@ -172,6 +262,9 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         switchMissionMode(ctx, ALERT);
 
         ctx.retryCount = 0;
+        ctx.alertFailCount = 0;
+        ctx.stableStepCount = 0;
+        ctx.recoveryReplanTick = 0;
         ctx.holdCycleCount = 0;
         ctx.actionCooldownTicks = 0;
         ctx.needWaitDraw = false;
@@ -201,12 +294,12 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
-        logBehavior("[RETURN] Cho qua lau. Thu quay ve base.");
+        logBehavior("[RETURN] Cho qua lau. Ve base de replan/recharge.");
 
-        enterSafeTerminationReturn(
+        enterRecoveryReturn(
             ctx,
             rb,
-            "[RETURN] Khong the tiep tuc. Quay ve base."
+            "[RETURN] Bi chan dong qua lau. Quay ve base de phuc hoi."
         );
         return;
     }
@@ -322,5 +415,7 @@ void handleRecharging(Robot &rb, CoverageContext &ctx)
     logBehavior("[RECHARGE] Da sac day pin.");
 
     clearRobotPath(rb);
+    ctx.returnToTerminate = false;
+    ctx.recoveryReplanTick = 0;
     switchMissionMode(ctx, NORMAL);
 }

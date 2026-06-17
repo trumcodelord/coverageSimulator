@@ -5,6 +5,7 @@
 #include "grid.h"
 #include "input.h"
 #include "log_cleanup.h"
+#include "obstacle_trace.h"
 #include "opencv.h"
 #include "run_artifacts.h"
 #include "stats.h"
@@ -24,35 +25,22 @@ namespace
     string resolveInputFile(const string &mapName)
     {
         vector<string> candidates;
-
         candidates.push_back(mapName);
         candidates.push_back(mapName + ".txt");
         candidates.push_back("tests/" + mapName);
         candidates.push_back("tests/" + mapName + ".txt");
 
         for (const string &candidate : candidates)
-        {
-            if (fs::exists(candidate))
-                return candidate;
-        }
+            if (fs::exists(candidate)) return candidate;
 
         if (fs::exists("tests") && fs::is_directory("tests"))
         {
             for (const auto &entry : fs::recursive_directory_iterator("tests"))
             {
-                if (!entry.is_regular_file())
-                    continue;
-
+                if (!entry.is_regular_file()) continue;
                 fs::path p = entry.path();
-
-                if (p.filename() == mapName ||
-                    p.filename() == mapName + ".txt")
-                {
-                    return p.string();
-                }
-
-                if (p.stem() == mapName)
-                    return p.string();
+                if (p.filename() == mapName || p.filename() == mapName + ".txt") return p.string();
+                if (p.stem() == mapName) return p.string();
             }
         }
 
@@ -90,13 +78,9 @@ int main()
 
     try
     {
-        artifacts = beginRunArtifacts(
-            mapName,
-            filename,
-            "orientation_aware_dijkstra"
-        );
-
+        artifacts = beginRunArtifacts(mapName, filename, "orientation_aware_dijkstra");
         initBehaviorLogAtPath(artifacts.logPath);
+        initObstacleTraceAtPath(artifacts.runDirectory + "/obstacles.csv");
     }
     catch (const exception &e)
     {
@@ -108,21 +92,18 @@ int main()
     rb.pos = start;
 
     logReadableEvent(
-        "INFO",
-        "RUN",
-        "start",
+        "INFO", "RUN", "start",
         "Start simulation on selected map.",
         "map=" + mapName +
         " input=" + filename +
         " run_id=" + artifacts.runId +
         " run_directory=" + artifacts.runDirectory +
-        " planner=" + artifacts.plannerName
+        " planner=" + artifacts.plannerName +
+        " obstacle_trace=" + obstacleTracePath()
     );
 
     logReadableEvent(
-        "INFO",
-        "MAP",
-        "problem",
+        "INFO", "MAP", "problem",
         "Problem loaded: robot must cover free cells and avoid obstacles.",
         "rows=" + to_string(rows) +
         " cols=" + to_string(cols) +
@@ -133,9 +114,7 @@ int main()
     );
 
     initEnvironment();
-
     executeCoverage(rb);
-
     stopEnvironment();
     waitEnvironment();
 
@@ -144,8 +123,7 @@ int main()
     CoverageContext finalCtx;
     drawFrame(rb, finalCtx, true, 0);
 
-    bool screenshotSaved =
-        saveCurrentFrame(artifacts.screenshotPath);
+    bool screenshotSaved = saveCurrentFrame(artifacts.screenshotPath);
 
     printStats(s);
 
@@ -153,8 +131,7 @@ int main()
 
     logReadableEvent(
         s.missionOutcome == MISSION_SUCCESS ? "INFO" : "WARN",
-        "MISSION",
-        "outcome",
+        "MISSION", "outcome",
         s.missionOutcome == MISSION_SUCCESS
             ? "Mission finished successfully."
             : "Mission finished with a non-success outcome; check previous events for the reason.",
@@ -166,34 +143,25 @@ int main()
         " recharges=" + to_string(s.rechargeCount) +
         " final_at_base=" + boolText(s.finalAtBase) +
         " screenshot_saved=" + boolText(screenshotSaved) +
-        " screenshot=" + artifacts.screenshotPath
+        " screenshot=" + artifacts.screenshotPath +
+        " obstacle_trace=" + obstacleTracePath()
     );
 
     try
     {
-        finalizeRunArtifacts(
-            artifacts,
-            s,
-            configuredMaxEnergy(),
-            screenshotSaved
-        );
+        finalizeRunArtifacts(artifacts, s, configuredMaxEnergy(), screenshotSaved);
 
-        logBehavior(
-            "[SYSTEM] Run artifacts saved to " +
-            artifacts.runDirectory
-        );
+        logBehavior("[SYSTEM] Run artifacts saved to " + artifacts.runDirectory);
+        logBehavior("[SYSTEM] Obstacle trace saved to " + obstacleTracePath());
     }
     catch (const exception &e)
     {
-        logBehavior(
-            "[SYSTEM] Khong the hoan tat run artifacts: " +
-            string(e.what())
-        );
+        logBehavior("[SYSTEM] Khong the hoan tat run artifacts: " + string(e.what()));
     }
 
+    closeObstacleTrace();
     closeBehaviorLog();
 
     cleanupOrphanLogDirectories("tests", "logs");
-
     return 0;
 }

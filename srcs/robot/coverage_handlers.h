@@ -18,3 +18,6 @@ void planPathIfNeeded(Robot &rb, CoverageContext &ctx);
 void handleBlockedNextCell(Robot &rb, CoverageContext &ctx);
 
 void handleRecharging(Robot &rb, CoverageContext &ctx);
+
+// Periodic recovery hook for abnormal but non-terminal states.
+bool tryRecoveryReplanToCoverage(Robot &rb, CoverageContext &ctx);

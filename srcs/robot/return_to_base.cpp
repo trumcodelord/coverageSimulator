@@ -48,11 +48,59 @@ namespace
         return isCriticalEnergy(rb, staticCostToBase);
     }
 
+    int activeReturnPathCost(const CoverageContext &ctx)
+    {
+        if (ctx.activeDecisionPurpose == "return" ||
+            ctx.activeDecisionPurpose == "return_detour")
+        {
+            return ctx.activeDecisionCostToTarget;
+        }
+
+        return INF;
+    }
+
+    bool activeReturnPathAffordable(const CoverageContext &ctx, const Robot &rb)
+    {
+        int cost = activeReturnPathCost(ctx);
+
+        if (cost >= INF)
+            return true;
+
+        // Requiring strictly more remaining energy than path cost prevents the
+        // robot from knowingly accepting a route that would leave it at 0.
+        return cost < rb.energy;
+    }
+
+    void logUnaffordableReturnPath(
+        const CoverageContext &ctx,
+        const Robot &rb,
+        const char *eventName
+    ) {
+        logRobotEvent(
+            "WARN",
+            "ENERGY",
+            eventName,
+            "Return path was rejected because current energy cannot safely afford it.",
+            rb,
+            ctx.mode,
+            "decision_id=" + to_string(ctx.activeDecisionId) +
+            " purpose=" + ctx.activeDecisionPurpose +
+            " path_cost=" + to_string(activeReturnPathCost(ctx)) +
+            " energy=" + to_string(rb.energy) +
+            " failed_constraint=current_energy_for_return"
+        );
+    }
+
     bool tryTacticalYieldMove(Robot &rb, CoverageContext &ctx)
     {
         TacticalYieldResult yield = findTacticalYieldCell(rb);
 
         if (!yield.found)
+            return false;
+
+        // Yield must remain return-feasible, otherwise the robot may step aside
+        // and lose the energy needed to return to base.
+        if (yield.score >= rb.energy)
             return false;
 
         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
@@ -84,6 +132,9 @@ namespace
 
         int turnQuarterCost =
             turnQuarterEnergyCostForStep(rb, next);
+
+        if (movementCost + turnQuarterCost >= rb.energy)
+            return false;
 
         RobotMoveResult move = moveRobotAlongCurrentPath(
             rb,
@@ -129,6 +180,20 @@ namespace
         enterWaitForCommandMode(ctx, rb);
         setCoverageCooldown(ctx, commandWaitTicks());
     }
+
+    void escalateBlockedReturn(
+        CoverageContext &ctx,
+        Robot &rb,
+        const char *message
+    ) {
+        if (ctx.coverageComplete)
+        {
+            enterPowerSaveForReturn(ctx, rb, message);
+            return;
+        }
+
+        enterWaitForCommandFromReturn(ctx, rb, message);
+    }
 }
 
 void waitReturnToBase(
@@ -155,6 +220,7 @@ void waitReturnToBase(
 
             ctx.needWaitDraw = false;
             ctx.returnWaitCount = 0;
+            ctx.recoveryReplanTick = 0;
 
             setHUDState("YIELD");
             setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
@@ -168,15 +234,32 @@ void waitReturnToBase(
 
         PathBuildResult detour = rebuildSafeDetourPathToBase(rb, &ctx);
 
-        if (detour.success)
+        if (detour.success && activeReturnPathAffordable(ctx, rb))
         {
             switchMissionMode(ctx, RETURN_TO_BASE);
 
             ctx.needWaitDraw = false;
             ctx.returnWaitCount = 0;
+            ctx.recoveryReplanTick = 0;
             setHUDState("RETURN_DETOUR");
             return;
         }
+
+        if (detour.success)
+        {
+            logUnaffordableReturnPath(ctx, rb, "return_detour_energy_rejected");
+            clearRobotPath(rb);
+        }
+    }
+
+    if (ctx.returnWaitCount >= maxReturnWaitBeforeCommand())
+    {
+        escalateBlockedReturn(
+            ctx,
+            rb,
+            "[COMMAND] Return bi chan qua lau. Cho chi thi."
+        );
+        return;
     }
 
     if (!canReturnAfterDynamicObstacleClears(rb) &&
@@ -231,6 +314,7 @@ void enterReturnToBase(
 
     rb.returnCount++;
     ctx.returnWaitCount = 0;
+    ctx.recoveryReplanTick = 0;
     ctx.returnToTerminate = false;
 
     clearRobotPath(rb);
@@ -245,6 +329,18 @@ void enterReturnToBase(
             ctx,
             rb,
             "[RETURN] Chua co duong ve base. Dang cho."
+        );
+        return;
+    }
+
+    if (!activeReturnPathAffordable(ctx, rb))
+    {
+        logUnaffordableReturnPath(ctx, rb, "return_path_energy_rejected");
+
+        waitReturnToBase(
+            ctx,
+            rb,
+            "[RETURN] Khong du pin cho duong ve hien tai. Dang cho/cho chi thi."
         );
     }
 }
@@ -305,14 +401,41 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
             );
             return;
         }
+
+        if (!activeReturnPathAffordable(ctx, rb))
+        {
+            logUnaffordableReturnPath(ctx, rb, "return_path_energy_rejected");
+
+            waitReturnToBase(
+                ctx,
+                rb,
+                "[RETURN] Khong du pin cho duong ve hien tai. Dang cho/cho chi thi."
+            );
+            return;
+        }
     }
 
-    if (hasBlockedCellAheadOnPath(rb))
+    if (hasBlockedCellAnywhereOnPath(rb))
     {
+        clearRobotPath(rb);
+
+        PathBuildResult rebuilt = rebuildPathToBase(rb, &ctx);
+
+        if (rebuilt.success)
+        {
+            ctx.needWaitDraw = false;
+            ctx.returnWaitCount = 0;
+            ctx.recoveryReplanTick = 0;
+            setHUDState("RETURN_REROUTE");
+            return;
+        }
+
         waitReturnToBase(
             ctx,
             rb,
-            "[BLOCKED] Duong ve dang bi chan."
+            rebuilt.currentEnergyLow
+                ? "[RETURN] Duong ve hien tai vuot qua pin con lai. Dang cho/cho chi thi."
+                : "[BLOCKED] Duong ve dang bi chan."
         );
         return;
     }
@@ -340,6 +463,16 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
     int turnQuarterCost =
         turnQuarterEnergyCostForStep(rb, next);
 
+    if (movementCost + turnQuarterCost >= rb.energy)
+    {
+        waitReturnToBase(
+            ctx,
+            rb,
+            "[RETURN] Khong du pin cho buoc tiep theo. Dang cho/cho chi thi."
+        );
+        return;
+    }
+
     RobotMoveResult move = moveRobotAlongCurrentPath(
         rb,
         ctx,
@@ -360,6 +493,7 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
     if (!ctx.shouldStop && !ctx.needWaitDraw && rb.steps > stepsBefore)
     {
         ctx.returnWaitCount = 0;
+        ctx.recoveryReplanTick = 0;
         setCoverageCooldown(ctx, stepTicksForMode(ctx.mode));
     }
 }

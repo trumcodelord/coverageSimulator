@@ -54,6 +54,11 @@ struct CoverageContext
     int holdCycleCount = 0;
     int returnWaitCount = 0;
 
+    // Shared abnormal-mode recovery watchdog. This lets ALERT, HOLD_SAFE and
+    // non-terminal RETURN_TO_BASE periodically re-evaluate whether coverage can
+    // safely resume instead of passively waiting forever.
+    int recoveryReplanTick = 0;
+
     int actionCooldownTicks = 0;
     PendingRobotMove pendingMove;
 

@@ -40,7 +40,7 @@ namespace
     bool shouldStayInAlert(const Robot &rb)
     {
         return hasImmediateDynamicDanger(rb) ||
-               hasBlockedCellAheadOnPath(rb);
+               hasBlockedCellAnywhereOnPath(rb);
     }
 
     int movementEnergyCostForNextMove(const Robot &rb, RobotMode mode)
@@ -88,6 +88,7 @@ namespace
 
         ctx.retryCount = 0;
         ctx.alertFailCount = 0;
+        ctx.recoveryReplanTick = 0;
 
         if (ctx.mode != ALERT)
             return;
@@ -217,6 +218,9 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    if (tryRecoveryReplanToCoverage(rb, ctx))
+        return;
+
     if (ctx.mode == RETURN_TO_BASE)
     {
         handleReturnToBase(rb, ctx);
@@ -244,7 +248,7 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
-        hasBlockedCellAheadOnPath(rb))
+        hasBlockedCellAnywhereOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }
@@ -254,7 +258,7 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
-        hasBlockedCellAheadOnPath(rb))
+        hasBlockedCellAnywhereOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }

@@ -60,6 +60,25 @@ bool hasBlockedCellAheadOnPath(
     return false;
 }
 
+bool hasBlockedCellAnywhereOnPath(const Robot &rb, int startIndex)
+{
+    if (startIndex < 0)
+        startIndex = rb.pathID;
+
+    if (startIndex < 0)
+        startIndex = 0;
+
+    for (int i = startIndex; i < (int)rb.path.size(); i++)
+    {
+        Cell p = rb.path[i];
+
+        if (!isFree(p.r, p.c))
+            return true;
+    }
+
+    return false;
+}
+
 bool isPathNearDynamicObstacle(
     const vector<Cell> &path,
     int startIndex,
@@ -71,6 +90,24 @@ bool isPathNearDynamicObstacle(
     for (int i = startIndex; i < (int)path.size(); i++)
     {
         if (isNearDynamicObstacle(path[i], radius))
+            return true;
+    }
+
+    return false;
+}
+
+bool isPathBlockedByDynamicObstacle(
+    const vector<Cell> &path,
+    int startIndex
+) {
+    if (startIndex < 0)
+        startIndex = 0;
+
+    for (int i = startIndex; i < (int)path.size(); i++)
+    {
+        Cell p = path[i];
+
+        if (isDynamicBlockedCell(p.r, p.c))
             return true;
     }
 
