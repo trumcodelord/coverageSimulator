@@ -19,6 +19,6 @@ void pushHUDEvent(const std::string &event);
 void clearHUDEvents();
 
 // Debug/test-only speed toggle.
-// Space toggles between normal speed and 5x simulation speed.
+// Space cycles between 1x, 5x, and 10x simulation speed.
 int testSpeedMultiplier();
 bool isTestSpeedEnabled();

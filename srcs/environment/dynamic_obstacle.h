@@ -48,3 +48,13 @@ void setRobotAvoidanceCell(Cell pos);
 // Dynamic obstacles may move through free operational space, but they must not
 // occupy static obstacles, out-of-bound cells, or the robot base/start cell.
 bool isForbiddenDynamicObstacleCell(int r, int c);
+
+// Dev-only manual vehicle control for stress-test demonstrations.
+// Direction convention is the same as vehicle.cpp:
+// 0 = down, 1 = right, 2 = up, 3 = left.
+bool hasManualControllableVehicle();
+bool toggleManualVehicleControl();
+bool isManualVehicleControlEnabled();
+int manualControlledVehicleIndex();
+Cell manualControlledVehicleCell();
+bool manualVehicleControlStep(int dir);

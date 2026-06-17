@@ -1,5 +1,6 @@
 #include "opencv.h"
 
+#include "dynamic_obstacle.h"
 #include "entity_renderer.h"
 #include "hud_renderer.h"
 #include "map_renderer.h"
@@ -8,6 +9,7 @@
 
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include <sstream>
 
 using namespace cv;
 
@@ -31,6 +33,31 @@ namespace
         return key == 32;
     }
 
+    bool isManualVehicleToggleKey(int key)
+    {
+        int low = key & 0xFF;
+        return key == '`' || key == '~' || low == '`' || low == '~';
+    }
+
+    int manualVehicleDirFromArrowKey(int key)
+    {
+        int low = key & 0xFF;
+
+        // OpenCV waitKeyEx arrow codes on Windows.
+        if (key == 2424832) return 3; // left
+        if (key == 2490368) return 2; // up
+        if (key == 2555904) return 1; // right
+        if (key == 2621440) return 0; // down
+
+        // Some OpenCV builds expose compact arrow codes.
+        if (low == 81) return 3; // left
+        if (low == 82) return 2; // up
+        if (low == 83) return 1; // right
+        if (low == 84) return 0; // down
+
+        return -1;
+    }
+
     void cycleSpeed()
     {
         if (speedMultiplier == 1)
@@ -41,10 +68,64 @@ namespace
             speedMultiplier = 1;
     }
 
+    void pushManualVehicleTargetEvent()
+    {
+        int idx = manualControlledVehicleIndex();
+        Cell p = manualControlledVehicleCell();
+
+        std::ostringstream oss;
+        oss << "[DEV] Manual vehicle ON: V#"
+            << (idx + 1)
+            << " at ("
+            << p.r
+            << ","
+            << p.c
+            << ").";
+
+        pushHUDEvent(oss.str());
+    }
+
     void handleKeyboard(int key)
     {
         if (key < 0)
             return;
+
+        if (isManualVehicleToggleKey(key))
+        {
+            if (!isManualVehicleControlEnabled() &&
+                !hasManualControllableVehicle())
+            {
+                pushHUDEvent("[DEV] Khong co VEHICLE de dieu khien.");
+                return;
+            }
+
+            bool enabled = toggleManualVehicleControl();
+
+            if (enabled)
+                pushManualVehicleTargetEvent();
+            else
+                pushHUDEvent("[DEV] Manual vehicle OFF.");
+
+            return;
+        }
+
+        int manualDir = manualVehicleDirFromArrowKey(key);
+
+        if (manualDir != -1)
+        {
+            if (!isManualVehicleControlEnabled())
+                return;
+
+            bool moved = manualVehicleControlStep(manualDir);
+
+            pushHUDEvent(
+                moved
+                    ? "[DEV] Manual vehicle moved."
+                    : "[DEV] Manual vehicle move blocked."
+            );
+
+            return;
+        }
 
         if (key == 'c' || key == 'C')
         {
@@ -130,7 +211,7 @@ void waitFrame(int delay)
     if (delay < 0)
         delay = 0;
 
-    int key = waitKey(delay);
+    int key = waitKeyEx(delay);
     handleKeyboard(key);
 }
 

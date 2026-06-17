@@ -8,6 +8,7 @@
 #include <cmath>
 #include <vector>
 #include <atomic>
+#include <random>
 
 using namespace std;
 
@@ -28,6 +29,14 @@ static const int ROBOT_YIELD_RADIUS = 1;
 
 static int occupiedCount[1001][1001];
 static bool reservedNext[1001][1001];
+
+static bool manualVehicleControlEnabled = false;
+static int manualVehicleControlIndex = -1;
+static const int MANUAL_RELEASE_WAIT_TICKS = 45;
+
+static std::mt19937 manualVehicleRng(
+    (unsigned)std::chrono::steady_clock::now().time_since_epoch().count()
+);
 
 static int roundToCell(float v)
 {
@@ -306,6 +315,186 @@ static void syncToGrid()
     }
 }
 
+static bool validManualVehicleIndexNoLock(int idx)
+{
+    if (idx < 0 || idx >= (int)obstacles.size())
+        return false;
+
+    return obstacles[idx].type == ObstacleType::VEHICLE;
+}
+
+static vector<int> collectManualVehicleCandidatesNoLock()
+{
+    vector<int> candidates;
+
+    for (int i = 0; i < (int)obstacles.size(); i++)
+    {
+        if (obstacles[i].type == ObstacleType::VEHICLE)
+            candidates.push_back(i);
+    }
+
+    return candidates;
+}
+
+static Cell manualNextCell(Cell p, int dir)
+{
+    Cell q = p;
+
+    if (dir == 0) q.r += 1;
+    else if (dir == 1) q.c += 1;
+    else if (dir == 2) q.r -= 1;
+    else if (dir == 3) q.c -= 1;
+
+    return q;
+}
+
+static bool occupiedByOtherObstacleNoLock(int selfIndex, Cell p)
+{
+    for (int i = 0; i < (int)obstacles.size(); i++)
+    {
+        if (i == selfIndex)
+            continue;
+
+        if (obstacles[i].pos == p)
+            return true;
+    }
+
+    return false;
+}
+
+static void freezeManualVehicleNoLock(DynamicObstacle &obs)
+{
+    obs.x = (float)obs.pos.r;
+    obs.y = (float)obs.pos.c;
+
+    obs.vx = 0.0f;
+    obs.vy = 0.0f;
+
+    obs.state = VEHICLE_WAIT;
+    obs.stateTick = 0;
+    obs.waitTick = MANUAL_RELEASE_WAIT_TICKS;
+}
+
+bool hasManualControllableVehicle()
+{
+    lock_guard<mutex> lock(simMutex);
+    return !collectManualVehicleCandidatesNoLock().empty();
+}
+
+bool toggleManualVehicleControl()
+{
+    lock_guard<mutex> lock(simMutex);
+
+    if (manualVehicleControlEnabled)
+    {
+        if (validManualVehicleIndexNoLock(manualVehicleControlIndex))
+            freezeManualVehicleNoLock(obstacles[manualVehicleControlIndex]);
+
+        manualVehicleControlEnabled = false;
+        manualVehicleControlIndex = -1;
+        syncToGrid();
+        return false;
+    }
+
+    vector<int> candidates = collectManualVehicleCandidatesNoLock();
+
+    if (candidates.empty())
+    {
+        manualVehicleControlEnabled = false;
+        manualVehicleControlIndex = -1;
+        return false;
+    }
+
+    uniform_int_distribution<int> dist(0, (int)candidates.size() - 1);
+
+    manualVehicleControlIndex = candidates[dist(manualVehicleRng)];
+    manualVehicleControlEnabled = true;
+
+    freezeManualVehicleNoLock(obstacles[manualVehicleControlIndex]);
+    syncToGrid();
+
+    return true;
+}
+
+bool isManualVehicleControlEnabled()
+{
+    lock_guard<mutex> lock(simMutex);
+
+    return manualVehicleControlEnabled &&
+           validManualVehicleIndexNoLock(manualVehicleControlIndex);
+}
+
+int manualControlledVehicleIndex()
+{
+    lock_guard<mutex> lock(simMutex);
+
+    if (!manualVehicleControlEnabled ||
+        !validManualVehicleIndexNoLock(manualVehicleControlIndex))
+        return -1;
+
+    return manualVehicleControlIndex;
+}
+
+Cell manualControlledVehicleCell()
+{
+    lock_guard<mutex> lock(simMutex);
+
+    if (!manualVehicleControlEnabled ||
+        !validManualVehicleIndexNoLock(manualVehicleControlIndex))
+        return {0, 0};
+
+    return obstacles[manualVehicleControlIndex].pos;
+}
+
+bool manualVehicleControlStep(int dir)
+{
+    lock_guard<mutex> lock(simMutex);
+
+    if (!manualVehicleControlEnabled ||
+        !validManualVehicleIndexNoLock(manualVehicleControlIndex))
+        return false;
+
+    if (dir < 0 || dir > 3)
+        return false;
+
+    DynamicObstacle &obs = obstacles[manualVehicleControlIndex];
+
+    // Rotate even when the move is blocked, so the demo shows the requested
+    // direction clearly.
+    obs.dir = dir;
+
+    Cell next = manualNextCell(obs.pos, dir);
+
+    if (isForbiddenDynamicObstacleCell(next.r, next.c))
+    {
+        freezeManualVehicleNoLock(obs);
+        syncToGrid();
+        return false;
+    }
+
+    // The manual vehicle is allowed to create bad tactical situations, but it
+    // should not be teleported directly onto the robot cell.
+    if (robotAvoidanceEnabled && next == robotAvoidanceCell)
+    {
+        freezeManualVehicleNoLock(obs);
+        syncToGrid();
+        return false;
+    }
+
+    if (occupiedByOtherObstacleNoLock(manualVehicleControlIndex, next))
+    {
+        freezeManualVehicleNoLock(obs);
+        syncToGrid();
+        return false;
+    }
+
+    obs.pos = next;
+    freezeManualVehicleNoLock(obs);
+    syncToGrid();
+
+    return true;
+}
+
 static void updateBehavior(DynamicObstacle &obs)
 {
     switch (obs.type)
@@ -322,10 +511,26 @@ static void updateBehavior(DynamicObstacle &obs)
 
 static void updateAllObstaclesSafely()
 {
+    if (manualVehicleControlEnabled &&
+        !validManualVehicleIndexNoLock(manualVehicleControlIndex))
+    {
+        manualVehicleControlEnabled = false;
+        manualVehicleControlIndex = -1;
+    }
+
     buildOccupiedGrid();
 
-    for (auto &obs : obstacles)
+    for (int i = 0; i < (int)obstacles.size(); i++)
     {
+        DynamicObstacle &obs = obstacles[i];
+
+        if (manualVehicleControlEnabled && i == manualVehicleControlIndex)
+        {
+            freezeManualVehicleNoLock(obs);
+            stopObstacleMovement(obs);
+            continue;
+        }
+
         updateBehavior(obs);
         moveStraightWithReservation(obs);
     }
@@ -357,6 +562,9 @@ static void dynamicObstacleLoop()
 void initDynamicObstacle()
 {
     stopRequested.store(false);
+
+    manualVehicleControlEnabled = false;
+    manualVehicleControlIndex = -1;
 
     robotAvoidanceCell = start;
     robotAvoidanceEnabled = inBounds(start.r, start.c);
