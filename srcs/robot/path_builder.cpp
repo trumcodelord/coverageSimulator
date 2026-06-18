@@ -445,8 +445,11 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
 
         if (hasBlockedCellAnywhereOnPath(rb) || !isNextPathCellFree(rb))
         {
+            // A dynamic obstacle may have occupied the nearest candidate path
+            // after candidate collection. Do not fail the whole decision; try
+            // the next reachable uncovered candidate instead.
             clearRobotPath(rb);
-            return {};
+            continue;
         }
 
         int builtPathCost = pathEnergyCost(rb.path, startDir);

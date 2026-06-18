@@ -12,7 +12,12 @@ namespace
 
     constexpr int ALERT_FAIL_TO_HOLD = 4;
     constexpr int HOLD_REPLAN_INTERVAL = 3;
-    constexpr int MAX_HOLD_CYCLES = 30;
+
+    // Used for two cases:
+    // 1. HOLD_SAFE away from base before recovery-return.
+    // 2. HOLD_SAFE at base when no safe coverage path can be found.
+    //    After 60 cycles, the mission is closed as PARTIAL_RETURNED.
+    constexpr int MAX_HOLD_CYCLES = 60;
 
     constexpr int MAX_RETURN_WAIT_WHEN_CRITICAL = 3;
     constexpr int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;

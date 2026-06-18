@@ -52,3 +52,11 @@ bool isManualVehicleControlEnabled();
 int manualControlledVehicleIndex();
 Cell manualControlledVehicleCell();
 bool manualVehicleControlStep(int dir);
+
+// Lazy dynamic invalidation support.
+// These functions are intended to be called while simMutex is already held
+// by the robot/control tick. They do not perform their own locking to avoid
+// nested-lock deadlocks.
+std::vector<Cell> consumeDirtyDynamicCellsNoLock();
+bool hasDirtyDynamicCellsNoLock();
+void clearDirtyDynamicCellsNoLock();

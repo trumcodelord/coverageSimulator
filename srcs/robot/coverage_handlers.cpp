@@ -34,6 +34,23 @@ namespace
                mode == RETURN_TO_BASE;
     }
 
+    void finishPartialReturnedAtBase(
+        CoverageContext &ctx,
+        Robot &rb,
+        const char *message
+    ) {
+        logBehavior(message);
+
+        clearRobotPath(rb);
+
+        ctx.returnToTerminate = true;
+        ctx.outcome = MISSION_PARTIAL_RETURNED;
+        ctx.shouldStop = true;
+        ctx.needWaitDraw = false;
+
+        setHUDState("PARTIAL_RETURNED");
+    }
+
     void enterSafeTerminationReturn(
         CoverageContext &ctx,
         Robot &rb,
@@ -43,13 +60,7 @@ namespace
 
         if (isAtBase(rb))
         {
-            logBehavior(message);
-            clearRobotPath(rb);
-
-            ctx.returnToTerminate = true;
-            ctx.outcome = MISSION_PARTIAL_RETURNED;
-            ctx.shouldStop = true;
-            setHUDState("PARTIAL_RETURNED");
+            finishPartialReturnedAtBase(ctx, rb, message);
             return;
         }
 
@@ -141,10 +152,6 @@ bool tryRecoveryReplanToCoverage(Robot &rb, CoverageContext &ctx)
     if (isAtBase(rb))
         return false;
 
-    // In ALERT/HOLD_SAFE, an existing path usually means the robot is already
-    // executing a recovery attempt. In RETURN_TO_BASE, however, an existing
-    // return path must not prevent the robot from listening for a newly opened
-    // coverage opportunity.
     if (ctx.mode != RETURN_TO_BASE && rb.pathID < (int)rb.path.size())
         return false;
 
@@ -162,7 +169,6 @@ bool tryRecoveryReplanToCoverage(Robot &rb, CoverageContext &ctx)
 
     if (!recovered.success)
     {
-        // A failed coverage probe must not destroy an active return path.
         rb.path = oldPath;
         rb.pathID = oldPathID;
         return false;
@@ -294,6 +300,16 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
 
     if (ctx.holdCycleCount > maxHoldCycles())
     {
+        if (isAtBase(rb))
+        {
+            finishPartialReturnedAtBase(
+                ctx,
+                rb,
+                "[MISSION] Da ve base nhung khong tim duoc duong tiep tuc sau 60 chu ky. Ket thuc nhiem vu mot phan."
+            );
+            return;
+        }
+
         logBehavior("[RETURN] Cho qua lau. Ve base de replan/recharge.");
 
         enterRecoveryReturn(

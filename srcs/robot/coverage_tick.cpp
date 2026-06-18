@@ -1,7 +1,9 @@
 #include "coverage_tick.h"
 
+#include "behavior_log.h"
 #include "coverage_handlers.h"
 #include "coverage_timing.h"
+#include "dynamic_obstacle.h"
 #include "energy_model.h"
 #include "mission_policy.h"
 #include "mission_state.h"
@@ -13,6 +15,7 @@
 #include "robot_motion.h"
 
 #include <iostream>
+#include <vector>
 
 using namespace std;
 
@@ -41,6 +44,118 @@ namespace
     {
         return hasImmediateDynamicDanger(rb) ||
                hasBlockedCellAnywhereOnPath(rb);
+    }
+
+    bool isNormalModeValidation(const CoverageContext &ctx)
+    {
+        return ctx.mode == NORMAL || ctx.mode == FINAL_PUSH;
+    }
+
+    bool dirtyCellIntersectsPathRange(
+        const Robot &rb,
+        const std::vector<Cell> &dirtyCells,
+        int beginIndex,
+        int endIndex
+    ) {
+        if (beginIndex < 0)
+            beginIndex = 0;
+
+        if (endIndex > (int)rb.path.size())
+            endIndex = (int)rb.path.size();
+
+        if (beginIndex >= endIndex)
+            return false;
+
+        for (const Cell &dirty : dirtyCells)
+            for (int i = beginIndex; i < endIndex; i++)
+                if (rb.path[i] == dirty)
+                    return true;
+
+        return false;
+    }
+
+    bool dirtyCellNearRobot(
+        const Robot &rb,
+        const std::vector<Cell> &dirtyCells,
+        int radius
+    ) {
+        for (const Cell &dirty : dirtyCells)
+        {
+            int dr = dirty.r - rb.pos.r;
+            if (dr < 0) dr = -dr;
+
+            int dc = dirty.c - rb.pos.c;
+            if (dc < 0) dc = -dc;
+
+            if (dr + dc <= radius)
+                return true;
+        }
+
+        return false;
+    }
+
+    bool invalidatePathIfAffectedByDirtyCells(
+        Robot &rb,
+        CoverageContext &ctx
+    ) {
+        std::vector<Cell> dirtyCells = consumeDirtyDynamicCellsNoLock();
+
+        if (dirtyCells.empty())
+            return false;
+
+        if (rb.pathID >= (int)rb.path.size())
+            return false;
+
+        int endIndex = (int)rb.path.size();
+        std::string scope = "full_path";
+
+        if (isNormalModeValidation(ctx))
+        {
+            PathSafetyConfig config;
+            endIndex = std::min(
+                (int)rb.path.size(),
+                rb.pathID + config.pathLookahead
+            );
+            scope = "lookahead";
+        }
+
+        bool affected = dirtyCellIntersectsPathRange(
+            rb,
+            dirtyCells,
+            rb.pathID,
+            endIndex
+        );
+
+        if (!affected && !isNormalModeValidation(ctx))
+            affected = dirtyCellNearRobot(rb, dirtyCells, 1);
+
+        if (!affected)
+            return false;
+
+        std::string details;
+        appendDetail(details, kv("dirty_cells", (int)dirtyCells.size()));
+        appendDetail(details, kv("scope", scope));
+        appendDetail(details, kv("path_index", rb.pathID));
+        appendDetail(details, kv("path_len", (int)rb.path.size()));
+
+        logRobotEvent(
+            "WARN",
+            "PATH",
+            "lazy_dynamic_path_invalidated",
+            "Dynamic obstacle changed a cell relevant to the current path; path is cleared lazily.",
+            rb,
+            ctx.mode,
+            details
+        );
+
+        clearRobotPath(rb);
+        ctx.stableStepCount = 0;
+
+        if (ctx.mode == NORMAL)
+            enterAlertMode(ctx);
+
+        setHUDState("REPLAN");
+        return true;
     }
 
     int movementEnergyCostForNextMove(const Robot &rb, RobotMode mode)
@@ -218,6 +333,12 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    // Lazy path invalidation: dynamic obstacles may move every frame, but the
+    // robot only clears/replans when the changed cells intersect its current
+    // path (lookahead in NORMAL, full future path in recovery modes).
+    if (invalidatePathIfAffectedByDirtyCells(rb, ctx))
+        return;
+
     if (tryRecoveryReplanToCoverage(rb, ctx))
         return;
 
@@ -248,7 +369,7 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
-        hasBlockedCellAnywhereOnPath(rb))
+        hasBlockedCellAheadOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }
@@ -258,7 +379,7 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
 
     if (!ctx.shouldStop &&
         !ctx.needWaitDraw &&
-        hasBlockedCellAnywhereOnPath(rb))
+        hasBlockedCellAheadOnPath(rb))
     {
         handleActivePathObstructed(rb, ctx);
     }

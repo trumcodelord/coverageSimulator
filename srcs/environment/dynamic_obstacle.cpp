@@ -37,6 +37,39 @@ static std::mt19937 manualVehicleRng(
     (unsigned)std::chrono::steady_clock::now().time_since_epoch().count()
 );
 
+static std::vector<Cell> dirtyDynamicCells;
+
+static void markDirtyDynamicCellNoLock(Cell p)
+{
+    if (!inBounds(p.r, p.c))
+        return;
+
+    // Keep the list small during fast animation. Duplicate dirty cells do not
+    // add information for path invalidation.
+    for (const Cell &existing : dirtyDynamicCells)
+        if (existing == p)
+            return;
+
+    dirtyDynamicCells.push_back(p);
+}
+
+std::vector<Cell> consumeDirtyDynamicCellsNoLock()
+{
+    std::vector<Cell> result = dirtyDynamicCells;
+    dirtyDynamicCells.clear();
+    return result;
+}
+
+bool hasDirtyDynamicCellsNoLock()
+{
+    return !dirtyDynamicCells.empty();
+}
+
+void clearDirtyDynamicCellsNoLock()
+{
+    dirtyDynamicCells.clear();
+}
+
 static int roundToCell(float v)
 {
     return (int)std::lround(v);
@@ -227,15 +260,29 @@ static void moveStraightWithReservation(DynamicObstacle &obs)
 
 static void syncToGrid()
 {
+    static bool nextBlocked[1001][1001];
+
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
-            dynamicBlocked[i][j] = false;
+            nextBlocked[i][j] = false;
 
     for (auto &obs : obstacles)
     {
         int r = obs.pos.r;
         int c = obs.pos.c;
-        if (inBounds(r, c)) dynamicBlocked[r][c] = true;
+        if (inBounds(r, c))
+            nextBlocked[r][c] = true;
+    }
+
+    for (int i = 1; i <= rows; i++)
+    {
+        for (int j = 1; j <= cols; j++)
+        {
+            if (dynamicBlocked[i][j] != nextBlocked[i][j])
+                markDirtyDynamicCellNoLock({i, j});
+
+            dynamicBlocked[i][j] = nextBlocked[i][j];
+        }
     }
 }
 
@@ -431,6 +478,7 @@ void initDynamicObstacle()
         for (int j = 1; j <= cols; j++)
             dynamicBlocked[i][j] = false;
     syncToGrid();
+    clearDirtyDynamicCellsNoLock();
     traceObstacles("init");
 }
 
