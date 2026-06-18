@@ -338,7 +338,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
     ctx.alertFailCount++;
 
     printRetryMessage(
-        "[WAIT] Chua co muc tieu hoac duong di.",
+        "[WAIT] Chua co duong hop le.",
         ctx.retryCount
     );
 
