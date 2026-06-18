@@ -10,6 +10,7 @@
 #include "return_to_base.h"
 #include "robot_lifecycle.h"
 
+#include <string>
 #include <vector>
 
 using namespace std;
@@ -37,7 +38,7 @@ namespace
     void finishPartialReturnedAtBase(
         CoverageContext &ctx,
         Robot &rb,
-        const char *message
+        const string &message
     ) {
         logBehavior(message);
 
@@ -289,23 +290,29 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         return;
     }
 
+    int holdCycleLimit = isAtBase(rb)
+        ? maxBaseNoPathHoldCycles()
+        : maxHoldCyclesBeforeReturn();
+
     if (ctx.holdCycleCount == 1 || ctx.holdCycleCount % 5 == 0)
     {
         logBehavior(
             "[HOLD] Chua co duong an toan. Chu ky " +
             to_string(ctx.holdCycleCount) + "/" +
-            to_string(maxHoldCycles()) + "."
+            to_string(holdCycleLimit) + "."
         );
     }
 
-    if (ctx.holdCycleCount > maxHoldCycles())
+    if (ctx.holdCycleCount > holdCycleLimit)
     {
         if (isAtBase(rb))
         {
             finishPartialReturnedAtBase(
                 ctx,
                 rb,
-                "[MISSION] Da ve base nhung khong tim duoc duong tiep tuc sau 60 chu ky. Ket thuc nhiem vu mot phan."
+                "[MISSION] Da ve base nhung khong tim duoc duong tiep tuc sau " +
+                to_string(maxBaseNoPathHoldCycles()) +
+                " chu ky. Ket thuc nhiem vu mot phan."
             );
             return;
         }
