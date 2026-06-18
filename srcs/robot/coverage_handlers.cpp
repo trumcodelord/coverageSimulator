@@ -303,7 +303,7 @@ void handleHoldSafe(Robot &rb, CoverageContext &ctx)
         );
     }
 
-    if (ctx.holdCycleCount > holdCycleLimit)
+    if (ctx.holdCycleCount >= holdCycleLimit)
     {
         if (isAtBase(rb))
         {
