@@ -13,11 +13,13 @@ namespace
     constexpr int ALERT_FAIL_TO_HOLD = 4;
     constexpr int HOLD_REPLAN_INTERVAL = 3;
 
-    // Used for two cases:
-    // 1. HOLD_SAFE away from base before recovery-return.
-    // 2. HOLD_SAFE at base when no safe coverage path can be found.
-    //    After 60 cycles, the mission is closed as PARTIAL_RETURNED.
-    constexpr int MAX_HOLD_CYCLES = 60;
+    // HOLD_SAFE away from base should not wait too long in the field.
+    // After 30 cycles, robot returns to base for recovery/recharge.
+    constexpr int MAX_HOLD_CYCLES_BEFORE_RETURN = 30;
+
+    // HOLD_SAFE at base can wait longer because robot is already safe.
+    // After 60 cycles without any safe coverage path, mission ends as PARTIAL_RETURNED.
+    constexpr int MAX_BASE_NO_PATH_HOLD_CYCLES = 60;
 
     constexpr int MAX_RETURN_WAIT_WHEN_CRITICAL = 3;
     constexpr int MAX_RETURN_WAIT_BEFORE_DETOUR = 4;
@@ -61,9 +63,14 @@ int holdReplanInterval()
     return HOLD_REPLAN_INTERVAL;
 }
 
-int maxHoldCycles()
+int maxHoldCyclesBeforeReturn()
 {
-    return MAX_HOLD_CYCLES;
+    return MAX_HOLD_CYCLES_BEFORE_RETURN;
+}
+
+int maxBaseNoPathHoldCycles()
+{
+    return MAX_BASE_NO_PATH_HOLD_CYCLES;
 }
 
 int maxReturnWaitWhenCritical()
