@@ -189,6 +189,18 @@ namespace
             throw runtime_error(name + " khong duoc nam tren wall.");
     }
 
+    bool hasDuplicatePendingObstacleCell(
+        const vector<PendingObstacle> &pendingObstacles,
+        int r,
+        int c
+    ) {
+        for (const PendingObstacle &obs : pendingObstacles)
+            if (obs.r == r && obs.c == c)
+                return true;
+
+        return false;
+    }
+
     void parseWeightedFormat(const vector<string> &lines, int index)
     {
         parseTwoIntegerLine(lines[index], rows, cols);
@@ -251,6 +263,9 @@ namespace
 
             obstacleTypeFromChar(typeToken[0]);
             validateFreeCellForEntity(r, c, "Vat can dong");
+
+            if (hasDuplicatePendingObstacleCell(pendingObstacles, r, c))
+                throw runtime_error("Nhieu vat can dong khong duoc spawn cung mot o.");
 
             pendingObstacles.push_back({typeToken[0], r, c});
         }

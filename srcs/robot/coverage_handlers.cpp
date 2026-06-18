@@ -342,7 +342,7 @@ void handleNoUsablePath(Robot &rb, CoverageContext &ctx)
         ctx.retryCount
     );
 
-    if (ctx.retryCount > maxRetryCount())
+    if (ctx.retryCount >= maxRetryCount())
     {
         logBehavior("[STOP] Khong tim duoc duong sau nhieu lan thu.");
 
@@ -405,7 +405,7 @@ void handleBlockedNextCell(Robot &rb, CoverageContext &ctx)
 
     printRetryMessage("[WAIT] O tiep theo dang bi chan.", ctx.retryCount);
 
-    if (ctx.retryCount > maxRetryCount())
+    if (ctx.retryCount >= maxRetryCount())
     {
         logBehavior("[STOP] Duong bi chan qua nhieu lan.");
 

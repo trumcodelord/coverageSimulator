@@ -188,6 +188,35 @@ namespace
 
         int energyBeforeMove = rb.energy;
 
+        if (!isFree(next.r, next.c))
+        {
+            result.blocked = true;
+
+            logRobotEvent(
+                "WARN",
+                "MOVE",
+                "blocked_before_commit",
+                "Target cell became unsafe while the robot was executing a pending move; commit is cancelled.",
+                rb,
+                ctx.mode,
+                "decision_id=" + std::to_string(ctx.activeDecisionId) +
+                " purpose=" + purposeForMove(ctx) +
+                " reason=" + reasonForMove(ctx) +
+                " from=" + cellText(prev) +
+                " to=" + cellText(next) +
+                " path_index_before=" + std::to_string(move.pathIndexBefore) +
+                " path_index_current=" + std::to_string(rb.pathID) +
+                " path_len=" + std::to_string(move.pathLength) +
+                " path_goal=" + pathGoalText(ctx, rb) +
+                " movement_cost_not_consumed=" + std::to_string(move.movementEnergyCost) +
+                " energy=" + std::to_string(rb.energy) +
+                " turn_quarters_consumed=" + std::to_string(move.turnQuartersConsumed) +
+                " total_turn_quarters=" + std::to_string(move.totalTurnQuarters)
+            );
+
+            return result;
+        }
+
         rb.pos = next;
         rb.headingDeg = move.targetAngleDeg;
         setRobotAvoidanceCell(rb.pos);

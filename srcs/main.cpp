@@ -162,6 +162,6 @@ int main()
     closeObstacleTrace();
     closeBehaviorLog();
 
-    cleanupOrphanLogDirectories("tests", "logs");
+    cleanupOrphanLogDirectories("tests", "logs", artifacts.safeTestName);
     return 0;
 }

@@ -50,7 +50,8 @@ namespace
 
 void cleanupOrphanLogDirectories(
     const string &testsRoot,
-    const string &logsRoot
+    const string &logsRoot,
+    const string &currentSafeTestName
 ) {
     if (!fs::exists(testsRoot) || !fs::is_directory(testsRoot))
     {
@@ -63,6 +64,9 @@ void cleanupOrphanLogDirectories(
         return;
 
     set<string> validLogNames;
+
+    if (!currentSafeTestName.empty())
+        validLogNames.insert(currentSafeTestName);
 
     for (const auto &entry : fs::recursive_directory_iterator(testsRoot))
     {

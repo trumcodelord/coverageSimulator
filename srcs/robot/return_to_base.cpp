@@ -39,7 +39,9 @@ namespace
         if (staticCostToBase >= INF)
             return false;
 
-        return rb.energy >= staticCostToBase;
+        // Returning with exactly zero energy is still treated as power loss.
+        // Keep this consistent with activeReturnPathAffordable() and path_builder.
+        return rb.energy > staticCostToBase;
     }
 
     bool isRobotCriticalEnergy(const Robot &rb)
