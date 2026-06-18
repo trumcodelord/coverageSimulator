@@ -11,7 +11,8 @@ int recoveryReplanInterval();
 
 int alertFailToHold();
 int holdReplanInterval();
-int maxHoldCycles();
+int maxHoldCyclesBeforeReturn();
+int maxBaseNoPathHoldCycles();
 
 int maxReturnWaitWhenCritical();
 int maxReturnWaitBeforeDetour();
