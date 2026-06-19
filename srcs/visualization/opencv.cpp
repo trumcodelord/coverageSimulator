@@ -5,6 +5,7 @@
 #include "grid.h"
 #include "hud_renderer.h"
 #include "map_renderer.h"
+#include "render_profiler.h"
 #include "visual_assets.h"
 #include "visual_layout.h"
 
@@ -217,6 +218,7 @@ void initWindow()
 
 void closeWindow()
 {
+    render_profiler::close();
     staticMapLayer.release();
     lastFrame.release();
     destroyWindow(visualWindowName());
@@ -224,27 +226,72 @@ void closeWindow()
 
 void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int delay)
 {
-    Mat canvas = baseFrameFromStaticLayer();
+    render_profiler::beginFrame();
+    render_profiler::RenderProfileScope totalScope("drawFrame_total");
 
-    paintDynamicMapOverlay(canvas);
-    paintGridLines(canvas);
+    Mat canvas;
+
+    {
+        render_profiler::RenderProfileScope scope("base_clone");
+        canvas = baseFrameFromStaticLayer();
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("dynamic_overlay");
+        paintDynamicMapOverlay(canvas);
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("grid_lines");
+        paintGridLines(canvas);
+    }
 
     if (showCoordinateHeaders)
+    {
+        render_profiler::RenderProfileScope scope("coordinate_headers");
         paintCoordinateHeaders(canvas);
+    }
 
-    paintTrail(canvas, rb);
+    {
+        render_profiler::RenderProfileScope scope("trail");
+        paintTrail(canvas, rb);
+    }
 
     if (showPath)
+    {
+        render_profiler::RenderProfileScope scope("path");
         paintPath(canvas, rb);
+    }
 
-    paintBase(canvas, rb);
-    paintDynamicObstacles(canvas);
-    paintRobot(canvas, rb, ctx);
-    paintHUD(canvas, rb, delay);
+    {
+        render_profiler::RenderProfileScope scope("base");
+        paintBase(canvas, rb);
+    }
 
-    lastFrame = canvas.clone();
+    {
+        render_profiler::RenderProfileScope scope("obstacles");
+        paintDynamicObstacles(canvas);
+    }
 
-    imshow(visualWindowName(), canvas);
+    {
+        render_profiler::RenderProfileScope scope("robot");
+        paintRobot(canvas, rb, ctx);
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("hud");
+        paintHUD(canvas, rb, delay);
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("lastFrame_clone");
+        lastFrame = canvas.clone();
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("imshow");
+        imshow(visualWindowName(), canvas);
+    }
 }
 
 void waitFrame(int delay)
@@ -252,8 +299,19 @@ void waitFrame(int delay)
     if (delay < 0)
         delay = 0;
 
-    int key = waitKeyEx(delay);
-    handleKeyboard(key);
+    int key = -1;
+
+    {
+        render_profiler::RenderProfileScope scope("waitKeyEx");
+        key = waitKeyEx(delay);
+    }
+
+    {
+        render_profiler::RenderProfileScope scope("keyboard");
+        handleKeyboard(key);
+    }
+
+    render_profiler::printAndReset(60);
 }
 
 bool saveCurrentFrame(const std::string &filename)
