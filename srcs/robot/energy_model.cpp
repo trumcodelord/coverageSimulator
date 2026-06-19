@@ -4,10 +4,37 @@
 #include "motion_geometry.h"
 
 #include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <sstream>
 
 using namespace std;
 
-int movementEnergyCostForStep(
+namespace
+{
+    constexpr double ENERGY_QUANTUM = 0.5;
+    constexpr double ENERGY_EPS = 1e-9;
+}
+
+double quantizeEnergy(double value)
+{
+    if (value <= 0.0)
+        return 0.0;
+
+    if (value >= INF)
+        return (double)INF;
+
+    return std::round(value / ENERGY_QUANTUM) * ENERGY_QUANTUM;
+}
+
+std::string formatEnergy(double value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << quantizeEnergy(value);
+    return out.str();
+}
+
+double movementEnergyCostForStep(
     const Robot &,
     Cell next,
     RobotMode mode,
@@ -16,9 +43,9 @@ int movementEnergyCostForStep(
     int terrainEntryCost = effectiveTerrainCostAt(next.r, next.c);
 
     if (terrainEntryCost >= INF)
-        return INF;
+        return (double)INF;
 
-    int cost = max(config.baseMoveCost, terrainEntryCost);
+    double cost = max(config.baseMoveCost, (double)terrainEntryCost);
 
     if (mode == ALERT)
         cost += config.alertPenalty;
@@ -29,48 +56,64 @@ int movementEnergyCostForStep(
     if (mode == FINAL_PUSH)
         cost += config.finalPushPenalty;
 
-    return max(0, cost);
+    return quantizeEnergy(max(0.0, cost));
 }
 
-int turnQuarterEnergyCostForStep(
+double turnQuarterEnergyCostAtCell(Cell cell)
+{
+    int currentTerrainCost = baseTerrainCostAt(cell.r, cell.c);
+
+    if (currentTerrainCost >= INF)
+        return (double)INF;
+
+    // A 90-degree in-place turn is modeled as half of one movement-energy unit
+    // on the terrain where the robot is currently standing.
+    return quantizeEnergy(0.5 * (double)currentTerrainCost);
+}
+
+double turnQuarterEnergyCostForStep(
     const Robot &rb,
     Cell next
 ) {
     if (quarterTurnsForMove(rb, next) <= 0)
-        return 0;
+        return 0.0;
 
-    int currentTerrainCost = baseTerrainCostAt(rb.pos.r, rb.pos.c);
-
-    if (currentTerrainCost >= INF)
-        return INF;
-
-    return currentTerrainCost;
+    return turnQuarterEnergyCostAtCell(rb.pos);
 }
 
-int computeMoveEnergyCost(
+double computeMoveEnergyCost(
     const Robot &rb,
     Cell next,
     RobotMode mode,
     const EnergyCostConfig &config
 ) {
-    int movementCost =
+    double movementCost =
         movementEnergyCostForStep(rb, next, mode, config);
 
-    int turnQuarterCost =
+    double turnQuarterCost =
         turnQuarterEnergyCostForStep(rb, next);
 
     if (movementCost >= INF || turnQuarterCost >= INF)
-        return INF;
+        return (double)INF;
 
-    return movementCost +
-           quarterTurnsForMove(rb, next) * turnQuarterCost;
+    return quantizeEnergy(
+        movementCost +
+        quarterTurnsForMove(rb, next) * turnQuarterCost
+    );
 }
 
-void consumeEnergy(Robot &rb, int amount)
+void consumeEnergy(Robot &rb, double amount, EnergyUseCategory category)
 {
-    if (amount <= 0)
+    double cost = quantizeEnergy(amount);
+
+    if (cost <= ENERGY_EPS)
         return;
 
-    rb.energy = max(0, rb.energy - amount);
-    rb.totalEnergyUsed += amount;
+    rb.energy = quantizeEnergy(max(0.0, rb.energy - cost));
+    rb.totalEnergyUsed = quantizeEnergy(rb.totalEnergyUsed + cost);
+
+    if (category == ENERGY_USE_MOVEMENT)
+        rb.movementEnergyUsed = quantizeEnergy(rb.movementEnergyUsed + cost);
+    else if (category == ENERGY_USE_TURN)
+        rb.turnEnergyUsed = quantizeEnergy(rb.turnEnergyUsed + cost);
 }

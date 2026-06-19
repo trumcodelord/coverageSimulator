@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "types.h"
@@ -14,9 +13,9 @@ struct MissionSummary
     bool powerPreserved = false;
 
     int totalSteps = 0;
-    int maxEnergy = 0;
-    int energyRemaining = 0;
-    int totalEnergyUsed = 0;
+    double maxEnergy = 0.0;
+    double energyRemaining = 0.0;
+    double totalEnergyUsed = 0.0;
 
     int returnCount = 0;
     int rechargeCount = 0;

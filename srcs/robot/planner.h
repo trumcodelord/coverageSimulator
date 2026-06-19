@@ -31,7 +31,7 @@ struct OrientedTraceState
     signed char dir = -1;
 };
 
-extern int orientedDist[1001][1001][4];
+extern double orientedDist[1001][1001][4];
 extern OrientedTraceState orientedTrace[1001][1001][4];
 
 HeadingDir headingDirFromDegrees(double headingDeg);
@@ -43,8 +43,8 @@ void dijkstraOriented(
     PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC
 );
 
-int orientedDistanceTo(Cell goal, HeadingDir goalDir);
-int bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir = nullptr);
+double orientedDistanceTo(Cell goal, HeadingDir goalDir);
+double bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir = nullptr);
 
 std::vector<Cell> tracePathOriented(
     Cell start,

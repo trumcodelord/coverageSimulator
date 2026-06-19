@@ -1,5 +1,6 @@
 #include "stats.h"
 
+#include "energy_model.h"
 #include "grid.h"
 
 #include <filesystem>
@@ -74,20 +75,22 @@ CoverageStats collectStats(const Robot& rb)
     s.coveredCells = coveredCellCount;
 
     for (int i = 1; i <= rows; i++)
-    {
         for (int j = 1; j <= cols; j++)
-        {
             if (isDynamicBlockedCell(i, j))
                 s.dynamicBlockedCells++;
-        }
-    }
 
     if (s.initialFreeCells > 0)
         s.coverageRate = (double)s.coveredCells / s.initialFreeCells * 100.0;
 
     s.totalSteps = rb.steps;
     s.energyUsed = rb.totalEnergyUsed;
+    s.movementEnergyUsed = rb.movementEnergyUsed;
+    s.turnEnergyUsed = rb.turnEnergyUsed;
     s.remainingEnergy = rb.energy;
+
+    if (s.coveredCells > 0)
+        s.energyPerCoveredCell = s.energyUsed / s.coveredCells;
+
     s.returnCount = rb.returnCount;
     s.rechargeCount = rb.rechargeCount;
     s.missionOutcome = rb.missionOutcome;
@@ -108,8 +111,11 @@ void printStats(const CoverageStats& s)
     cout << "Covered cells: " << s.coveredCells << '\n';
     cout << "Coverage rate: " << s.coverageRate << " %\n";
     cout << "Total steps: " << s.totalSteps << '\n';
-    cout << "Energy used: " << s.energyUsed << '\n';
-    cout << "Remaining energy: " << s.remainingEnergy << '\n';
+    cout << "Energy used: " << formatEnergy(s.energyUsed) << '\n';
+    cout << "Movement energy used: " << formatEnergy(s.movementEnergyUsed) << '\n';
+    cout << "Turn energy used: " << formatEnergy(s.turnEnergyUsed) << '\n';
+    cout << "Remaining energy: " << formatEnergy(s.remainingEnergy) << '\n';
+    cout << "Energy per covered cell: " << formatEnergy(s.energyPerCoveredCell) << '\n';
     cout << "Return count: " << s.returnCount << '\n';
     cout << "Recharge count: " << s.rechargeCount << '\n';
     cout << "Mission outcome: " << missionOutcomeName(s.missionOutcome) << '\n';
@@ -132,8 +138,11 @@ void logStats(const CoverageStats& s, const string& filename)
     fout << "Covered cells: " << s.coveredCells << '\n';
     fout << "Coverage rate: " << s.coverageRate << " %\n";
     fout << "Total steps: " << s.totalSteps << '\n';
-    fout << "Energy used: " << s.energyUsed << '\n';
-    fout << "Remaining energy: " << s.remainingEnergy << '\n';
+    fout << "Energy used: " << formatEnergy(s.energyUsed) << '\n';
+    fout << "Movement energy used: " << formatEnergy(s.movementEnergyUsed) << '\n';
+    fout << "Turn energy used: " << formatEnergy(s.turnEnergyUsed) << '\n';
+    fout << "Remaining energy: " << formatEnergy(s.remainingEnergy) << '\n';
+    fout << "Energy per covered cell: " << formatEnergy(s.energyPerCoveredCell) << '\n';
     fout << "Return count: " << s.returnCount << '\n';
     fout << "Recharge count: " << s.rechargeCount << '\n';
     fout << "Mission outcome: " << missionOutcomeName(s.missionOutcome) << '\n';
@@ -168,7 +177,10 @@ void appendBenchmarkCsv(
             << "coverage_rate,"
             << "total_steps,"
             << "energy_used,"
+            << "movement_energy_used,"
+            << "turn_energy_used,"
             << "remaining_energy,"
+            << "energy_per_covered_cell,"
             << "return_count,"
             << "recharge_count,"
             << "mission_outcome,"
@@ -189,8 +201,11 @@ void appendBenchmarkCsv(
          << s.coveredCells << ','
          << s.coverageRate << ','
          << s.totalSteps << ','
-         << s.energyUsed << ','
-         << s.remainingEnergy << ','
+         << formatEnergy(s.energyUsed) << ','
+         << formatEnergy(s.movementEnergyUsed) << ','
+         << formatEnergy(s.turnEnergyUsed) << ','
+         << formatEnergy(s.remainingEnergy) << ','
+         << formatEnergy(s.energyPerCoveredCell) << ','
          << s.returnCount << ','
          << s.rechargeCount << ','
          << missionOutcomeName(s.missionOutcome) << ','

@@ -21,7 +21,7 @@ using namespace std;
 
 namespace
 {
-    int estimateCostToBase(const Robot &rb)
+    double estimateCostToBase(const Robot &rb)
     {
         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
 
@@ -36,7 +36,7 @@ namespace
 
     bool shouldRobotReturnForEnergy(const Robot &rb)
     {
-        int costToBase = estimateCostToBase(rb);
+        double costToBase = estimateCostToBase(rb);
         return shouldReturnForEnergy(rb, costToBase);
     }
 
@@ -158,19 +158,19 @@ namespace
         return true;
     }
 
-    int movementEnergyCostForNextMove(const Robot &rb, RobotMode mode)
+    double movementEnergyCostForNextMove(const Robot &rb, RobotMode mode)
     {
         if (rb.pathID >= (int)rb.path.size())
-            return 0;
+            return 0.0;
 
         Cell next = rb.path[rb.pathID];
         return movementEnergyCostForStep(rb, next, mode);
     }
 
-    int turnQuarterEnergyCostForNextMove(const Robot &rb)
+    double turnQuarterEnergyCostForNextMove(const Robot &rb)
     {
         if (rb.pathID >= (int)rb.path.size())
-            return 0;
+            return 0.0;
 
         Cell next = rb.path[rb.pathID];
         return turnQuarterEnergyCostForStep(rb, next);
@@ -280,10 +280,10 @@ namespace
         if (rb.pathID >= (int)rb.path.size())
             return;
 
-        int movementCost =
+        double movementCost =
             movementEnergyCostForNextMove(rb, ctx.mode);
 
-        int turnQuarterCost =
+        double turnQuarterCost =
             turnQuarterEnergyCostForNextMove(rb);
 
         RobotMoveResult move = moveRobotAlongCurrentPath(
@@ -333,9 +333,6 @@ void processCoverageTick(Robot &rb, CoverageContext &ctx)
         return;
     }
 
-    // Lazy path invalidation: dynamic obstacles may move every frame, but the
-    // robot only clears/replans when the changed cells intersect its current
-    // path (lookahead in NORMAL, full future path in recovery modes).
     if (invalidatePathIfAffectedByDirtyCells(rb, ctx))
         return;
 

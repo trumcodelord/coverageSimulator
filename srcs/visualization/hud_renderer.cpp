@@ -1,5 +1,6 @@
 #include "hud_renderer.h"
 
+#include "energy_model.h"
 #include "grid.h"
 #include "visual_layout.h"
 
@@ -172,9 +173,11 @@ namespace
 
         lines.push_back("Steps: " + to_string(rb.steps));
         lines.push_back(
-            "Energy: " + to_string(rb.energy) + "/" + to_string(rb.maxEnergy)
+            "Energy: " + formatEnergy(rb.energy) + "/" + formatEnergy(rb.maxEnergy)
         );
-        lines.push_back("Used: " + to_string(rb.totalEnergyUsed));
+        lines.push_back("Used: " + formatEnergy(rb.totalEnergyUsed));
+        lines.push_back("Move energy: " + formatEnergy(rb.movementEnergyUsed));
+        lines.push_back("Turn energy: " + formatEnergy(rb.turnEnergyUsed));
         lines.push_back("Returns: " + to_string(rb.returnCount));
         lines.push_back("Recharges: " + to_string(rb.rechargeCount));
         lines.push_back("State: " + hudState);
@@ -250,7 +253,7 @@ void paintHUD(Mat &canvas, const Robot &rb, int delay)
         if (lines[i] == "Behavior log:")
             color = Scalar(80, 80, 80);
 
-        if (i < 6 && lines[i].rfind("State:", 0) == 0)
+        if (i < 8 && lines[i].rfind("State:", 0) == 0)
             color = hudStateColor(hudState);
 
         putText(
@@ -261,6 +264,20 @@ void paintHUD(Mat &canvas, const Robot &rb, int delay)
             fontScale,
             color,
             thickness,
+            LINE_AA
+        );
+    }
+
+    if (delay > 0)
+    {
+        putText(
+            canvas,
+            "delay=" + to_string(delay) + "ms",
+            Point(hudBox.x + padding, hudBox.y + hudBox.height - padding),
+            fontFace,
+            0.4,
+            Scalar(100, 100, 100),
+            1,
             LINE_AA
         );
     }

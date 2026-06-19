@@ -84,7 +84,7 @@ namespace
 
     void opportunisticRechargeAtBase(Robot &rb, CoverageContext &ctx)
     {
-        int energyBefore = rb.energy;
+        double energyBefore = rb.energy;
         rb.energy = rb.maxEnergy;
 
         logRobotEvent(
@@ -97,8 +97,8 @@ namespace
             "decision_id=" + std::to_string(ctx.activeDecisionId) +
             " purpose=" + purposeForMove(ctx) +
             " reason=incidental_base_pass_through" +
-            " energy_before=" + std::to_string(energyBefore) +
-            " energy_after=" + std::to_string(rb.energy) +
+            " energy_before=" + formatEnergy(energyBefore) +
+            " energy_after=" + formatEnergy(rb.energy) +
             " base=" + cellText(rb.base)
         );
 
@@ -113,8 +113,8 @@ namespace
             return;
         }
 
-        int before = rb.energy;
-        consumeEnergy(rb, ctx.pendingMove.turnQuarterEnergyCost);
+        double before = rb.energy;
+        consumeEnergy(rb, ctx.pendingMove.turnQuarterEnergyCost, ENERGY_USE_TURN);
 
         ctx.pendingMove.turnQuartersConsumed++;
 
@@ -128,11 +128,11 @@ namespace
             "decision_id=" + std::to_string(ctx.activeDecisionId) +
             " purpose=" + purposeForMove(ctx) +
             " reason=" + reasonForMove(ctx) +
-            " turn_quarter_cost=" + std::to_string(ctx.pendingMove.turnQuarterEnergyCost) +
+            " turn_quarter_cost=" + formatEnergy(ctx.pendingMove.turnQuarterEnergyCost) +
             " turn_quarters_consumed=" + std::to_string(ctx.pendingMove.turnQuartersConsumed) +
             " total_turn_quarters=" + std::to_string(ctx.pendingMove.totalTurnQuarters) +
-            " energy_before=" + std::to_string(before) +
-            " energy_after=" + std::to_string(rb.energy) +
+            " energy_before=" + formatEnergy(before) +
+            " energy_after=" + formatEnergy(rb.energy) +
             " pos=" + cellText(rb.pos)
         );
 
@@ -154,7 +154,7 @@ namespace
         result.to = next;
         result.enteredUncoveredCell = move.enteredUncoveredCell;
 
-        int energyBeforeMove = rb.energy;
+        double energyBeforeMove = rb.energy;
 
         if (!isFree(next.r, next.c))
         {
@@ -176,8 +176,8 @@ namespace
                 " path_index_current=" + std::to_string(rb.pathID) +
                 " path_len=" + std::to_string(move.pathLength) +
                 " path_goal=" + pathGoalText(ctx, rb) +
-                " movement_cost_not_consumed=" + std::to_string(move.movementEnergyCost) +
-                " energy=" + std::to_string(rb.energy) +
+                " movement_cost_not_consumed=" + formatEnergy(move.movementEnergyCost) +
+                " energy=" + formatEnergy(rb.energy) +
                 " turn_quarters_consumed=" + std::to_string(move.turnQuartersConsumed) +
                 " total_turn_quarters=" + std::to_string(move.totalTurnQuarters)
             );
@@ -198,7 +198,7 @@ namespace
         int edgeVisitCountAfter = rb.edgeCount[e];
 
         rb.steps++;
-        consumeEnergy(rb, move.movementEnergyCost);
+        consumeEnergy(rb, move.movementEnergyCost, ENERGY_USE_MOVEMENT);
 
         result.moved = true;
         result.powerLoss = (rb.energy <= 0);
@@ -215,9 +215,9 @@ namespace
             " path_goal=" + pathGoalText(ctx, rb) +
             " cell_status=" + cellStatusText(move.enteredUncoveredCell) +
             " edge_visit_count=" + std::to_string(edgeVisitCountAfter) +
-            " movement_cost=" + std::to_string(move.movementEnergyCost) +
-            " energy_before_move=" + std::to_string(energyBeforeMove) +
-            " energy_after_move=" + std::to_string(rb.energy) +
+            " movement_cost=" + formatEnergy(move.movementEnergyCost) +
+            " energy_before_move=" + formatEnergy(energyBeforeMove) +
+            " energy_after_move=" + formatEnergy(rb.energy) +
             " turn_delta_deg=" + std::to_string((int)move.turnDeltaDeg) +
             " turn_ticks=" + std::to_string(move.turnTicks) +
             " move_ticks=" + std::to_string(move.moveTicks);
@@ -379,8 +379,8 @@ RobotMoveResult advancePendingRobotMove(
 RobotMoveResult moveRobotAlongCurrentPath(
     Robot &rb,
     CoverageContext &ctx,
-    int movementEnergyCost,
-    int turnQuarterEnergyCost
+    double movementEnergyCost,
+    double turnQuarterEnergyCost
 ) {
     RobotMoveResult result;
 

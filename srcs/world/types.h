@@ -97,10 +97,12 @@ struct Robot
     Cell base = {0, 0};
 
     int steps = 0;
-    int maxEnergy = 0;
-    int energy = 0;
+    double maxEnergy = 0.0;
+    double energy = 0.0;
 
-    int totalEnergyUsed = 0;
+    double totalEnergyUsed = 0.0;
+    double movementEnergyUsed = 0.0;
+    double turnEnergyUsed = 0.0;
     int returnCount = 0;
     int rechargeCount = 0;
 

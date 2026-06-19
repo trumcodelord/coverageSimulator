@@ -11,7 +11,7 @@ struct PathBuildResult
     bool currentEnergyLow = false;
     bool energyInfeasible = false;
 
-    int pathCost = INF;
+    double pathCost = INF;
 };
 
 void clearRobotPath(Robot &rb);

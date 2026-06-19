@@ -19,7 +19,7 @@ using namespace std;
 
 namespace
 {
-    int estimateStaticCostToBase(const Robot &rb)
+    double estimateStaticCostToBase(const Robot &rb)
     {
         HeadingDir startDir = headingDirFromDegrees(rb.headingDeg);
 
@@ -34,23 +34,21 @@ namespace
 
     bool canReturnAfterDynamicObstacleClears(const Robot &rb)
     {
-        int staticCostToBase = estimateStaticCostToBase(rb);
+        double staticCostToBase = estimateStaticCostToBase(rb);
 
         if (staticCostToBase >= INF)
             return false;
 
-        // Returning with exactly zero energy is still treated as power loss.
-        // Keep this consistent with activeReturnPathAffordable() and path_builder.
         return rb.energy > staticCostToBase;
     }
 
     bool isRobotCriticalEnergy(const Robot &rb)
     {
-        int staticCostToBase = estimateStaticCostToBase(rb);
+        double staticCostToBase = estimateStaticCostToBase(rb);
         return isCriticalEnergy(rb, staticCostToBase);
     }
 
-    int activeReturnPathCost(const CoverageContext &ctx)
+    double activeReturnPathCost(const CoverageContext &ctx)
     {
         if (ctx.activeDecisionPurpose == "return" ||
             ctx.activeDecisionPurpose == "return_detour")
@@ -58,18 +56,16 @@ namespace
             return ctx.activeDecisionCostToTarget;
         }
 
-        return INF;
+        return (double)INF;
     }
 
     bool activeReturnPathAffordable(const CoverageContext &ctx, const Robot &rb)
     {
-        int cost = activeReturnPathCost(ctx);
+        double cost = activeReturnPathCost(ctx);
 
         if (cost >= INF)
             return true;
 
-        // Requiring strictly more remaining energy than path cost prevents the
-        // robot from knowingly accepting a route that would leave it at 0.
         return cost < rb.energy;
     }
 
@@ -87,8 +83,8 @@ namespace
             ctx.mode,
             "decision_id=" + to_string(ctx.activeDecisionId) +
             " purpose=" + ctx.activeDecisionPurpose +
-            " path_cost=" + to_string(activeReturnPathCost(ctx)) +
-            " energy=" + to_string(rb.energy) +
+            " path_cost=" + formatEnergy(activeReturnPathCost(ctx)) +
+            " energy=" + formatEnergy(rb.energy) +
             " failed_constraint=current_energy_for_return"
         );
     }
@@ -100,8 +96,6 @@ namespace
         if (!yield.found)
             return false;
 
-        // Yield must remain return-feasible, otherwise the robot may step aside
-        // and lose the energy needed to return to base.
         if (yield.score >= rb.energy)
             return false;
 
@@ -129,10 +123,10 @@ namespace
 
         Cell next = rb.path[rb.pathID];
 
-        int movementCost =
+        double movementCost =
             movementEnergyCostForStep(rb, next, ctx.mode);
 
-        int turnQuarterCost =
+        double turnQuarterCost =
             turnQuarterEnergyCostForStep(rb, next);
 
         if (movementCost + turnQuarterCost >= rb.energy)
@@ -459,10 +453,10 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
 
     Cell next = rb.path[rb.pathID];
 
-    int movementCost =
+    double movementCost =
         movementEnergyCostForStep(rb, next, ctx.mode);
 
-    int turnQuarterCost =
+    double turnQuarterCost =
         turnQuarterEnergyCostForStep(rb, next);
 
     if (movementCost + turnQuarterCost >= rb.energy)

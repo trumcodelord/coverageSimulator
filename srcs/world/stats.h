@@ -18,8 +18,11 @@ struct CoverageStats
     double coverageRate = 0.0;
 
     int totalSteps = 0;
-    int energyUsed = 0;
-    int remainingEnergy = 0;
+    double energyUsed = 0.0;
+    double movementEnergyUsed = 0.0;
+    double turnEnergyUsed = 0.0;
+    double remainingEnergy = 0.0;
+    double energyPerCoveredCell = 0.0;
     int returnCount = 0;
     int rechargeCount = 0;
 

@@ -2,7 +2,9 @@
 
 #include "behavior_log.h"
 #include "dynamic_obstacle.h"
+#include "energy_model.h"
 #include "grid.h"
+#include "motion_geometry.h"
 #include "planner.h"
 
 #include <algorithm>
@@ -20,7 +22,7 @@ namespace
     struct InitialHeadingScore
     {
         HeadingDir dir = DIR_NORTH;
-        long long sampledCost = numeric_limits<long long>::max();
+        double sampledCost = numeric_limits<double>::max();
         int sampledTargets = 0;
         int straightFreeCells = 0;
     };
@@ -41,14 +43,6 @@ namespace
         if (dir == DIR_SOUTH) return "south";
         if (dir == DIR_WEST) return "west";
         return "unknown";
-    }
-
-    double headingDegrees(HeadingDir dir)
-    {
-        if (dir == DIR_NORTH) return 0.0;
-        if (dir == DIR_EAST) return -90.0;
-        if (dir == DIR_SOUTH) return 180.0;
-        return 90.0;
     }
 
     Cell nextCellInDirection(Cell p, HeadingDir dir)
@@ -91,7 +85,7 @@ namespace
             PlannerObstacleMode::IGNORE_DYNAMIC
         );
 
-        vector<int> targetCosts;
+        vector<double> targetCosts;
         targetCosts.reserve(rows * cols);
 
         for (int r = 1; r <= rows; r++)
@@ -103,7 +97,7 @@ namespace
                 if (target == start || !isCoverageTargetCell(r, c))
                     continue;
 
-                int cost = bestOrientedDistanceTo(target);
+                double cost = bestOrientedDistanceTo(target);
 
                 if (cost < INF)
                     targetCosts.push_back(cost);
@@ -117,10 +111,10 @@ namespace
             (int)targetCosts.size()
         );
 
-        score.sampledCost = 0;
+        score.sampledCost = 0.0;
 
         for (int i = 0; i < score.sampledTargets; i++)
-            score.sampledCost += targetCosts[i];
+            score.sampledCost = quantizeEnergy(score.sampledCost + targetCosts[i]);
 
         return score;
     }
@@ -165,7 +159,7 @@ namespace
 
         string details;
         appendDetail(details, kv("selected", headingName(best.dir)));
-        appendDetail(details, kv("setup_turn_energy", 0));
+        appendDetail(details, kv("setup_turn_energy", 0.0));
         appendDetail(details, kv("sample_limit", INITIAL_HEADING_TARGET_SAMPLE));
 
         for (const InitialHeadingScore &score : scores)
@@ -189,7 +183,7 @@ namespace
     }
 }
 
-void initializeCoverageRobot(Robot &rb, int maxEnergy)
+void initializeCoverageRobot(Robot &rb, double maxEnergy)
 {
     rb.steps = 0;
     rb.pathID = 0;
@@ -198,15 +192,17 @@ void initializeCoverageRobot(Robot &rb, int maxEnergy)
     rb.edgeCount.clear();
 
     rb.base = rb.pos;
-    rb.maxEnergy = maxEnergy;
+    rb.maxEnergy = quantizeEnergy(maxEnergy);
     rb.energy = rb.maxEnergy;
-    rb.totalEnergyUsed = 0;
+    rb.totalEnergyUsed = 0.0;
+    rb.movementEnergyUsed = 0.0;
+    rb.turnEnergyUsed = 0.0;
     rb.returnCount = 0;
     rb.rechargeCount = 0;
     rb.missionOutcome = MISSION_RUNNING;
 
     HeadingDir initialDir = chooseInitialHeading(rb.pos);
-    rb.headingDeg = headingDegrees(initialDir);
+    rb.headingDeg = angleForDirection(initialDir);
 
     rb.trail.push_back(rb.pos);
     markCovered(rb.pos.r, rb.pos.c);

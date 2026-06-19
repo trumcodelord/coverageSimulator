@@ -18,8 +18,8 @@ struct PendingRobotMove
     Cell from = {0, 0};
     Cell to = {0, 0};
 
-    int movementEnergyCost = 0;
-    int turnQuarterEnergyCost = 0;
+    double movementEnergyCost = 0.0;
+    double turnQuarterEnergyCost = 0.0;
     int totalTurnQuarters = 0;
     int turnQuartersConsumed = 0;
 
@@ -54,23 +54,19 @@ struct CoverageContext
     int holdCycleCount = 0;
     int returnWaitCount = 0;
 
-    // Shared abnormal-mode recovery watchdog. This lets ALERT, HOLD_SAFE and
-    // non-terminal RETURN_TO_BASE periodically re-evaluate whether coverage can
-    // safely resume instead of passively waiting forever.
     int recoveryReplanTick = 0;
 
     int actionCooldownTicks = 0;
     PendingRobotMove pendingMove;
 
-    // Debug/observability only. These fields do not affect planning.
     int decisionCounter = 0;
     int activeDecisionId = 0;
     Cell activeDecisionTarget = {0, 0};
     std::string activeDecisionPurpose = "coverage";
     std::string activeDecisionReason = "unknown";
     int activeDecisionCandidateCount = 0;
-    int activeDecisionCostToTarget = 0;
-    int activeDecisionCostTargetToBase = 0;
+    double activeDecisionCostToTarget = 0.0;
+    double activeDecisionCostTargetToBase = 0.0;
 
     bool coverageComplete = false;
     bool returnToTerminate = false;
@@ -89,8 +85,8 @@ void beginDecisionTrace(
     Cell target,
     const std::string &reason,
     int candidateCount = 0,
-    int costToTarget = 0,
-    int costTargetToBase = 0
+    double costToTarget = 0.0,
+    double costTargetToBase = 0.0
 );
 
 void logDecisionPath(

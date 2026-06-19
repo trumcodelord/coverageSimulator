@@ -2,6 +2,7 @@
 
 #include "hud_renderer.h"
 #include "types.h"
+#include "energy_model.h"
 
 #include <filesystem>
 #include <fstream>
@@ -116,7 +117,7 @@ inline std::string cellText(Cell p)
 
 inline std::string energyText(const Robot &rb)
 {
-    return std::to_string(rb.energy) + "/" + std::to_string(rb.maxEnergy);
+    return formatEnergy(rb.energy) + "/" + formatEnergy(rb.maxEnergy);
 }
 
 inline std::string boolText(bool value)
@@ -142,6 +143,11 @@ inline std::string kv(const std::string &key, int value)
 inline std::string kv(const std::string &key, long long value)
 {
     return key + "=" + std::to_string(value);
+}
+
+inline std::string kv(const std::string &key, double value)
+{
+    return key + "=" + formatEnergy(value);
 }
 
 inline std::string kv(const std::string &key, bool value)

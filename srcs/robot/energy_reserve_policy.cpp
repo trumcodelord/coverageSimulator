@@ -1,6 +1,9 @@
 #include "energy_reserve_policy.h"
 
+#include "energy_model.h"
+
 #include <algorithm>
+#include <cmath>
 
 using namespace std;
 
@@ -11,65 +14,61 @@ namespace
         return rb.pos == rb.base;
     }
 
-    int proportionalReserve(
-        int costToBase,
+    double proportionalReserve(
+        double costToBase,
         const ReturnEnergyPolicy &policy
     ) {
-        if (policy.returnMarginDivisor <= 0)
+        if (policy.returnMarginDivisor <= 0.0)
             return policy.minReturnMargin;
 
-        // Integer ceiling division keeps the reserve from being rounded down.
-        long long numerator =
-            (long long)costToBase + policy.returnMarginDivisor - 1;
-
-        return (int)(numerator / policy.returnMarginDivisor);
+        return quantizeEnergy(
+            std::ceil((costToBase / policy.returnMarginDivisor) * 2.0) / 2.0
+        );
     }
 }
 
-int returnMarginForCost(
-    int costToBase,
+double returnMarginForCost(
+    double costToBase,
     const ReturnEnergyPolicy &policy
 ) {
-    if (costToBase < 0 || costToBase >= INF)
-        return INF;
+    if (costToBase < 0.0 || costToBase >= INF)
+        return (double)INF;
 
-    return max(
+    return quantizeEnergy(max(
         policy.minReturnMargin,
         proportionalReserve(costToBase, policy)
-    );
+    ));
 }
 
 bool shouldReturnForEnergy(
     const Robot &rb,
-    int costToBase,
+    double costToBase,
     const ReturnEnergyPolicy &policy
 ) {
     if (isAtBase(rb))
         return false;
 
-    if (costToBase < 0 || costToBase >= INF)
+    if (costToBase < 0.0 || costToBase >= INF)
         return false;
 
-    int reserve = returnMarginForCost(costToBase, policy);
+    double reserve = returnMarginForCost(costToBase, policy);
 
     if (reserve >= INF)
         return false;
 
-    long long requiredEnergy =
-        (long long)costToBase + (long long)reserve;
-
-    return (long long)rb.energy <= requiredEnergy;
+    double requiredEnergy = quantizeEnergy(costToBase + reserve);
+    return rb.energy <= requiredEnergy;
 }
 
 bool isCriticalEnergy(
     const Robot &rb,
-    int costToBase,
+    double costToBase,
     const ReturnEnergyPolicy &policy
 ) {
     if (isAtBase(rb))
         return false;
 
-    if (costToBase < 0 || costToBase >= INF)
+    if (costToBase < 0.0 || costToBase >= INF)
         return rb.energy <= policy.minReturnMargin;
 
     return rb.energy <= costToBase ||
@@ -78,25 +77,24 @@ bool isCriticalEnergy(
 
 bool canVisitTargetAndReturn(
     const Robot &rb,
-    int costToTarget,
-    int costTargetToBase,
+    double costToTarget,
+    double costTargetToBase,
     const ReturnEnergyPolicy &policy
 ) {
-    if (costToTarget < 0 || costTargetToBase < 0)
+    if (costToTarget < 0.0 || costTargetToBase < 0.0)
         return false;
 
     if (costToTarget >= INF || costTargetToBase >= INF)
         return false;
 
-    int reserve = returnMarginForCost(costTargetToBase, policy);
+    double reserve = returnMarginForCost(costTargetToBase, policy);
 
     if (reserve >= INF)
         return false;
 
-    long long requiredEnergy =
-        (long long)costToTarget +
-        (long long)costTargetToBase +
-        (long long)reserve;
+    double requiredEnergy = quantizeEnergy(
+        costToTarget + costTargetToBase + reserve
+    );
 
-    return (long long)rb.energy >= requiredEnergy;
+    return rb.energy >= requiredEnergy;
 }

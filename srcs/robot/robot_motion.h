@@ -17,8 +17,8 @@ struct RobotMoveResult
 RobotMoveResult moveRobotAlongCurrentPath(
     Robot &rb,
     CoverageContext &ctx,
-    int movementEnergyCost,
-    int turnQuarterEnergyCost
+    double movementEnergyCost,
+    double turnQuarterEnergyCost
 );
 
 bool hasPendingRobotMove(const CoverageContext &ctx);

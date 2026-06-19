@@ -16,7 +16,7 @@ namespace
 {
     struct CoverageCandidate
     {
-        int costFromRobot = INF;
+        double costFromRobot = INF;
         Cell target = {0, 0};
         HeadingDir arrivalDir = DIR_NORTH;
     };
@@ -29,7 +29,7 @@ namespace
         return effectiveTerrainCostAt(p.r, p.c);
     }
 
-    int pathEnergyCost(
+    double pathEnergyCost(
         const vector<Cell> &path,
         HeadingDir startDir,
         PlannerObstacleMode mode = PlannerObstacleMode::RESPECT_DYNAMIC
@@ -37,7 +37,7 @@ namespace
         if (path.size() <= 1)
             return 0;
 
-        long long total = 0;
+        double total = 0.0;
         HeadingDir curDir = startDir;
 
         for (int i = 1; i < (int)path.size(); i++)
@@ -46,14 +46,14 @@ namespace
             if (!directionForStep(path[i - 1], path[i], nextDir))
                 return INF;
 
-            int turnCostTerrain = baseTerrainCostAt(path[i - 1].r, path[i - 1].c);
-            int moveCost = movementCostForPathCell(path[i], mode);
+            double turnCostTerrain = turnQuarterEnergyCostAtCell(path[i - 1]);
+            double moveCost = movementCostForPathCell(path[i], mode);
 
             if (turnCostTerrain >= INF || moveCost >= INF)
                 return INF;
 
             total += moveCost;
-            total += (long long)quarterTurnsBetween(curDir, nextDir) * turnCostTerrain;
+            total = quantizeEnergy(total + (double)quarterTurnsBetween(curDir, nextDir) * turnCostTerrain);
 
             if (total >= INF)
                 return INF;
@@ -61,7 +61,7 @@ namespace
             curDir = nextDir;
         }
 
-        return (int)total;
+        return quantizeEnergy(total);
     }
 
     string compactPathText(const vector<Cell> &path, int limit = 20)
@@ -117,7 +117,7 @@ namespace
 
                 Cell target = {r, c};
                 HeadingDir arrivalDir = DIR_NORTH;
-                int cost = bestOrientedDistanceTo(target, &arrivalDir);
+                double cost = bestOrientedDistanceTo(target, &arrivalDir);
 
                 if (cost >= INF)
                     continue;
@@ -130,7 +130,7 @@ namespace
         return candidates;
     }
 
-    int estimateTargetToBase(
+    double estimateTargetToBase(
         const CoverageCandidate &candidate,
         const Robot &rb,
         PlannerObstacleMode mode
@@ -141,8 +141,8 @@ namespace
 
     bool canFullBatteryVisitAndReturn(
         const Robot &rb,
-        int costToTarget,
-        int costToBase
+        double costToTarget,
+        double costToBase
     ) {
         Robot full = rb;
         full.energy = full.maxEnergy;
@@ -156,7 +156,7 @@ namespace
 
         for (const CoverageCandidate &candidate : staticCandidates)
         {
-            int costToBase = estimateTargetToBase(
+            double costToBase = estimateTargetToBase(
                 candidate,
                 rb,
                 PlannerObstacleMode::IGNORE_DYNAMIC
@@ -189,7 +189,7 @@ namespace
         CoverageContext *ctx,
         const Robot &rb,
         const string &event,
-        int pathCost
+        double pathCost
     ) {
         if (ctx == nullptr)
             return;
@@ -199,8 +199,8 @@ namespace
             rb,
             event,
             false,
-            "path_cost=" + to_string(pathCost) +
-            " energy=" + to_string(rb.energy) +
+            "path_cost=" + formatEnergy(pathCost) +
+            " energy=" + formatEnergy(rb.energy) +
             " failed_constraint=current_energy_for_path"
         );
     }
@@ -226,7 +226,7 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
     dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC);
 
     HeadingDir baseDir = DIR_NORTH;
-    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
+    double costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
 
     if (costToBase >= INF)
     {
@@ -250,7 +250,7 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
             rb,
             "return_path_built",
             true,
-            "path_cost=" + to_string(costToBase) +
+            "path_cost=" + formatEnergy(costToBase) +
             " arrival_dir=" + to_string((int)baseDir) +
             " first_step=" + cellText(rb.path[rb.pathID]) +
             " path=" + compactPathText(rb.path)
@@ -288,7 +288,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
     dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC);
 
     HeadingDir baseDir = DIR_NORTH;
-    int costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
+    double costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
 
     if (costToBase >= INF)
     {
@@ -342,7 +342,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
             rb,
             "return_detour_path_built",
             true,
-            "path_cost=" + to_string(costToBase) +
+            "path_cost=" + formatEnergy(costToBase) +
             " arrival_dir=" + to_string((int)baseDir) +
             " first_step=" + cellText(rb.path[rb.pathID]) +
             " path=" + compactPathText(rb.path)
@@ -363,7 +363,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     for (int rank = 0; rank < (int)candidates.size(); rank++)
     {
         const CoverageCandidate &candidate = candidates[rank];
-        int costToBase = estimateTargetToBase(
+        double costToBase = estimateTargetToBase(
             candidate,
             rb,
             PlannerObstacleMode::RESPECT_DYNAMIC
@@ -435,7 +435,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             continue;
         }
 
-        int builtPathCost = pathEnergyCost(rb.path, startDir);
+        double builtPathCost = pathEnergyCost(rb.path, startDir);
 
         if (ctx != nullptr)
         {
@@ -445,7 +445,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                 "coverage_path_built",
                 true,
                 "rank=" + to_string(rank + 1) +
-                " path_cost=" + to_string(builtPathCost) +
+                " path_cost=" + formatEnergy(builtPathCost) +
                 " arrival_dir=" + to_string((int)candidate.arrivalDir) +
                 " first_step=" + cellText(rb.path[rb.pathID]) +
                 " path=" + compactPathText(rb.path)
@@ -484,7 +484,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                     ? "max_energy_infeasible_for_candidates"
                     : "temporarily_blocked_or_no_safe_candidate",
             (int)candidates.size(),
-            candidates.empty() ? 0 : candidates.front().costFromRobot,
+            candidates.empty() ? 0.0 : candidates.front().costFromRobot,
             0
         );
 

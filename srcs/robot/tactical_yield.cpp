@@ -1,4 +1,5 @@
 #include "tactical_yield.h"
+#include "energy_model.h"
 #include "planner.h"
 
 #include <vector>
@@ -8,7 +9,7 @@ namespace
     struct OrientedYieldCandidate
     {
         Cell target = {0, 0};
-        int costFromRobot = INF;
+        double costFromRobot = INF;
         HeadingDir arrivalDir = DIR_NORTH;
     };
 
@@ -78,10 +79,10 @@ TacticalYieldResult findTacticalYieldCell(
                 continue;
 
             HeadingDir arrivalDir = DIR_NORTH;
-            int costFromRobot =
+            double costFromRobot =
                 bestOrientedDistanceTo(candidate, &arrivalDir);
 
-            if (costFromRobot <= 0 ||
+            if (costFromRobot <= 0.0 ||
                 costFromRobot > config.maxCandidateCost)
             {
                 continue;
@@ -103,14 +104,12 @@ TacticalYieldResult findTacticalYieldCell(
             PlannerObstacleMode::RESPECT_DYNAMIC
         );
 
-        int costToBase = bestOrientedDistanceTo(rb.base);
+        double costToBase = bestOrientedDistanceTo(rb.base);
 
         if (costToBase >= INF)
             continue;
 
-        long long score =
-            (long long)candidate.costFromRobot +
-            (long long)costToBase;
+        double score = quantizeEnergy(candidate.costFromRobot + costToBase);
 
         if (score >= INF)
             continue;
@@ -121,7 +120,7 @@ TacticalYieldResult findTacticalYieldCell(
             result.target = candidate.target;
             result.costFromRobot = candidate.costFromRobot;
             result.costToBase = costToBase;
-            result.score = (int)score;
+            result.score = score;
         }
     }
 

@@ -1,5 +1,7 @@
 #include "planner.h"
 
+#include "energy_model.h"
+
 #include <algorithm>
 #include <cmath>
 #include <queue>
@@ -10,7 +12,7 @@ using namespace std;
 int d[1001][1001];
 Cell trace[1001][1001];
 
-int orientedDist[1001][1001][4];
+double orientedDist[1001][1001][4];
 OrientedTraceState orientedTrace[1001][1001][4];
 
 namespace
@@ -23,7 +25,7 @@ namespace
         return 0 <= dir && dir < 4;
     }
 
-    double normalizeAngle(double angle)
+    double normalizeAngleForPlanner(double angle)
     {
         while (angle <= -180.0)
             angle += 360.0;
@@ -36,7 +38,7 @@ namespace
 
     double angularDistance(double a, double b)
     {
-        return fabs(normalizeAngle(a - b));
+        return fabs(normalizeAngleForPlanner(a - b));
     }
 
     int movementTerrainCostAt(
@@ -185,7 +187,7 @@ void dijkstraOriented(
         {
             for (int dir = 0; dir < 4; dir++)
             {
-                orientedDist[r][c][dir] = INF;
+                orientedDist[r][c][dir] = (double)INF;
                 orientedTrace[r][c][dir] = {0, 0, -1};
             }
         }
@@ -198,11 +200,11 @@ void dijkstraOriented(
         return;
     }
 
-    using QueueNode = tuple<int, int, int, int>;
+    using QueueNode = tuple<double, int, int, int>;
     priority_queue<QueueNode, vector<QueueNode>, greater<QueueNode>> pq;
 
-    orientedDist[start.r][start.c][startDir] = 0;
-    pq.push({0, start.r, start.c, (int)startDir});
+    orientedDist[start.r][start.c][startDir] = 0.0;
+    pq.push({0.0, start.r, start.c, (int)startDir});
 
     while (!pq.empty())
     {
@@ -213,9 +215,9 @@ void dijkstraOriented(
             continue;
 
         HeadingDir currentDir = static_cast<HeadingDir>(currentDirValue);
-        int currentTerrainCost = baseTerrainCostAt(ur, uc);
+        double turnQuarterCost = turnQuarterEnergyCostAtCell({ur, uc});
 
-        if (currentTerrainCost >= INF)
+        if (turnQuarterCost >= INF)
             continue;
 
         for (int nextDirValue = 0; nextDirValue < 4; nextDirValue++)
@@ -235,10 +237,11 @@ void dijkstraOriented(
             HeadingDir nextDir = static_cast<HeadingDir>(nextDirValue);
             int turns = quarterTurnsBetween(currentDir, nextDir);
 
-            long long candidateCost =
-                (long long)du +
-                (long long)movementCost +
-                (long long)turns * currentTerrainCost;
+            double candidateCost = quantizeEnergy(
+                du +
+                (double)movementCost +
+                (double)turns * turnQuarterCost
+            );
 
             if (candidateCost >= INF)
                 continue;
@@ -246,7 +249,7 @@ void dijkstraOriented(
             if (candidateCost >= orientedDist[vr][vc][nextDirValue])
                 continue;
 
-            orientedDist[vr][vc][nextDirValue] = (int)candidateCost;
+            orientedDist[vr][vc][nextDirValue] = candidateCost;
             orientedTrace[vr][vc][nextDirValue] = {
                 (short)ur,
                 (short)uc,
@@ -254,7 +257,7 @@ void dijkstraOriented(
             };
 
             pq.push({
-                (int)candidateCost,
+                candidateCost,
                 vr,
                 vc,
                 nextDirValue
@@ -263,23 +266,23 @@ void dijkstraOriented(
     }
 }
 
-int orientedDistanceTo(Cell goal, HeadingDir goalDir)
+double orientedDistanceTo(Cell goal, HeadingDir goalDir)
 {
     if (!inBounds(goal.r, goal.c) || !isValidDirection((int)goalDir))
-        return INF;
+        return (double)INF;
 
     return orientedDist[goal.r][goal.c][goalDir];
 }
 
-int bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir)
+double bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir)
 {
     if (bestDir != nullptr)
         *bestDir = DIR_NORTH;
 
     if (!inBounds(goal.r, goal.c))
-        return INF;
+        return (double)INF;
 
-    int bestCost = INF;
+    double bestCost = (double)INF;
     int bestDirValue = DIR_NORTH;
 
     for (int dir = 0; dir < 4; dir++)

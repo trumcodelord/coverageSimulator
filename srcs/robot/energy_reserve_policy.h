@@ -5,36 +5,36 @@
 struct ReturnEnergyPolicy
 {
     // Minimum reserve for an unexpected turn/replan near the base.
-    int minReturnMargin = 15;
+    double minReturnMargin = 15.0;
 
     // Long return paths receive an additional proportional reserve:
-    // ceil(costToBase / returnMarginDivisor).
-    int returnMarginDivisor = 4;
+    // ceil(costToBase / returnMarginDivisor) to the nearest 0.5 energy unit.
+    double returnMarginDivisor = 4.0;
 
     // Absolute emergency threshold used when the robot is nearly depleted.
-    int minEmergencyEnergy = 3;
+    double minEmergencyEnergy = 3.0;
 };
 
-int returnMarginForCost(
-    int costToBase,
+double returnMarginForCost(
+    double costToBase,
     const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
 );
 
 bool shouldReturnForEnergy(
     const Robot &rb,
-    int costToBase,
+    double costToBase,
     const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
 );
 
 bool isCriticalEnergy(
     const Robot &rb,
-    int costToBase,
+    double costToBase,
     const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
 );
 
 bool canVisitTargetAndReturn(
     const Robot &rb,
-    int costToTarget,
-    int costTargetToBase,
+    double costToTarget,
+    double costTargetToBase,
     const ReturnEnergyPolicy &policy = ReturnEnergyPolicy()
 );

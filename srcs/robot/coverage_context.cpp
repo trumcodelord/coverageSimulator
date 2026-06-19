@@ -1,6 +1,7 @@
 #include "coverage_context.h"
 
 #include "behavior_log.h"
+#include "energy_model.h"
 #include "grid.h"
 
 #include <string>
@@ -22,8 +23,8 @@ void beginDecisionTrace(
     Cell target,
     const std::string &reason,
     int candidateCount,
-    int costToTarget,
-    int costTargetToBase
+    double costToTarget,
+    double costTargetToBase
 ) {
     ctx.decisionCounter++;
     ctx.activeDecisionId = ctx.decisionCounter;
@@ -46,8 +47,8 @@ void beginDecisionTrace(
         " target=" + cellText(target) +
         " reason=" + reason +
         " candidates=" + std::to_string(candidateCount) +
-        " cost_to_target=" + std::to_string(costToTarget) +
-        " cost_target_to_base=" + std::to_string(costTargetToBase) +
+        " cost_to_target=" + formatEnergy(costToTarget) +
+        " cost_target_to_base=" + formatEnergy(costTargetToBase) +
         " target_covered=" + boolText(isCovered(target.r, target.c))
     );
 }
@@ -65,8 +66,8 @@ void logDecisionPath(
         " target=" + cellText(ctx.activeDecisionTarget) +
         " reason=" + ctx.activeDecisionReason +
         " candidates=" + std::to_string(ctx.activeDecisionCandidateCount) +
-        " cost_to_target=" + std::to_string(ctx.activeDecisionCostToTarget) +
-        " cost_target_to_base=" + std::to_string(ctx.activeDecisionCostTargetToBase) +
+        " cost_to_target=" + formatEnergy(ctx.activeDecisionCostToTarget) +
+        " cost_target_to_base=" + formatEnergy(ctx.activeDecisionCostTargetToBase) +
         " path_len=" + std::to_string((int)rb.path.size()) +
         " path_index=" + std::to_string(rb.pathID) +
         " result=" + std::string(success ? "success" : "fail");
