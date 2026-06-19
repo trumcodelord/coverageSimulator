@@ -1,5 +1,6 @@
 #include "map_renderer.h"
 
+#include "dynamic_obstacle.h"
 #include "grid.h"
 #include "visual_layout.h"
 
@@ -12,6 +13,14 @@ using namespace cv;
 
 namespace
 {
+    Mat coveredLayer;
+    Mat coveredMask;
+    int cachedCoveredCount = -1;
+    int cachedRows = -1;
+    int cachedCols = -1;
+    int cachedCellSize = -1;
+    Size cachedCanvasSize;
+
     bool isBaseCell(int r, int c)
     {
         return r == start.r && c == start.c;
@@ -108,10 +117,112 @@ namespace
 
         rectangle(canvas, tl, br, color, FILLED);
     }
+
+    bool coverageCacheMatches(const Mat &canvas)
+    {
+        return !coveredLayer.empty() &&
+               !coveredMask.empty() &&
+               cachedRows == rows &&
+               cachedCols == cols &&
+               cachedCellSize == visualCellSize() &&
+               cachedCanvasSize == canvas.size() &&
+               cachedCoveredCount == coveredCellCount;
+    }
+
+    void resetCoverageCache(const Mat &canvas)
+    {
+        coveredLayer = Mat::zeros(canvas.size(), canvas.type());
+        coveredMask = Mat::zeros(canvas.size(), CV_8UC1);
+
+        cachedRows = rows;
+        cachedCols = cols;
+        cachedCellSize = visualCellSize();
+        cachedCanvasSize = canvas.size();
+        cachedCoveredCount = -1;
+    }
+
+    void rebuildCoverageCache(const Mat &canvas)
+    {
+        if (coveredLayer.empty() ||
+            coveredMask.empty() ||
+            cachedRows != rows ||
+            cachedCols != cols ||
+            cachedCellSize != visualCellSize() ||
+            cachedCanvasSize != canvas.size())
+        {
+            resetCoverageCache(canvas);
+        }
+
+        coveredLayer.setTo(Scalar(0, 0, 0));
+        coveredMask.setTo(Scalar(0));
+
+        for (int r = 1; r <= rows; r++)
+        {
+            for (int c = 1; c <= cols; c++)
+            {
+                if (!isCoverageTargetCell(r, c) || !covered[r][c])
+                    continue;
+
+                Scalar color = blendColor(
+                    terrainColorForCell(r, c),
+                    Scalar(80, 210, 80),
+                    0.28
+                );
+
+                fillCell(coveredLayer, r, c, color);
+                fillCell(coveredMask, r, c, Scalar(255));
+            }
+        }
+
+        cachedCoveredCount = coveredCellCount;
+    }
+
+    void ensureCoverageCache(const Mat &canvas)
+    {
+        if (!coverageCacheMatches(canvas))
+            rebuildCoverageCache(canvas);
+    }
+
+    void paintDynamicBlockedCell(Mat &canvas, int r, int c)
+    {
+        if (!isCoverageTargetCell(r, c))
+            return;
+
+        Scalar color = blendColor(
+            terrainColorForCell(r, c),
+            Scalar(180, 105, 255),
+            0.65
+        );
+
+        fillCell(canvas, r, c, color);
+    }
+
+    void paintBaseOverlay(Mat &canvas)
+    {
+        if (!isCoverageTargetCell(start.r, start.c))
+            return;
+
+        Scalar color = blendColor(
+            terrainColorForCell(start.r, start.c),
+            Scalar(255, 235, 180),
+            0.20
+        );
+
+        Point tl = visualCellTopLeft(start.r, start.c);
+        Point br(
+            tl.x + visualCellSize(),
+            tl.y + visualCellSize()
+        );
+
+        rectangle(canvas, tl, br, color, FILLED);
+        paintBaseMarker(canvas, tl, br);
+    }
 }
 
 void paintStaticMapLayer(Mat &canvas)
 {
+    // Map terrain and static walls do not change while a test is running.
+    // They are cached by opencv.cpp and reused every frame.
     for (int r = 1; r <= rows; r++)
     {
         for (int c = 1; c <= cols; c++)
@@ -123,48 +234,29 @@ void paintStaticMapLayer(Mat &canvas)
 
 void paintDynamicMapOverlay(Mat &canvas, bool showLogicalCoverage)
 {
-    for (int r = 1; r <= rows; r++)
+    if (showLogicalCoverage)
     {
-        for (int c = 1; c <= cols; c++)
-        {
-            bool targetCell = isCoverageTargetCell(r, c);
-            bool dynamicBlocked = targetCell && isDynamicBlockedCell(r, c);
-            bool logicallyCovered = targetCell && showLogicalCoverage && covered[r][c];
-            bool baseCell = targetCell && isBaseCell(r, c);
-
-            if (!dynamicBlocked && !logicallyCovered && !baseCell)
-                continue;
-
-            Scalar color = terrainColorForCell(r, c);
-
-            if (dynamicBlocked)
-            {
-                color = blendColor(color, Scalar(180, 105, 255), 0.65);
-            }
-            else if (logicallyCovered)
-            {
-                // Keep terrain grayscale visible; coverage is a green overlay.
-                color = blendColor(color, Scalar(80, 210, 80), 0.28);
-            }
-
-            if (baseCell)
-            {
-                // Keep the base recognizable without hiding the terrain layer.
-                color = blendColor(color, Scalar(255, 235, 180), 0.20);
-            }
-
-            Point tl = visualCellTopLeft(r, c);
-            Point br(
-                tl.x + visualCellSize(),
-                tl.y + visualCellSize()
-            );
-
-            rectangle(canvas, tl, br, color, FILLED);
-
-            if (baseCell)
-                paintBaseMarker(canvas, tl, br);
-        }
+        // Covered-cell visualization changes only when a new cell is marked
+        // covered, not on every animation frame. Keep it in a layer and rebuild
+        // only when coveredCellCount/layout changes.
+        ensureCoverageCache(canvas);
+        coveredLayer.copyTo(canvas, coveredMask);
     }
+
+    // Dynamic obstacles are few; draw their current blocked cells directly
+    // instead of scanning the whole map for dynamicBlocked[][] every frame.
+    for (const DynamicObstacle &obs : obstacles)
+    {
+        if (!inBounds(obs.pos.r, obs.pos.c))
+            continue;
+
+        if (!isDynamicBlockedCell(obs.pos.r, obs.pos.c))
+            continue;
+
+        paintDynamicBlockedCell(canvas, obs.pos.r, obs.pos.c);
+    }
+
+    paintBaseOverlay(canvas);
 }
 
 void paintMapCells(Mat &canvas, bool showLogicalCoverage)

@@ -434,6 +434,15 @@ RobotMoveResult moveRobotAlongCurrentPath(
     int quarterTurns = turnQuarterCountFromDelta(turnDelta);
     int turnTicks = quarterTurns * stepTicks;
 
+    if (isMetricHTurnCostModel())
+    {
+        // Metric H models a holonomic/flexible robot: direction changes are
+        // instantaneous and cost-free. Do not spend animation ticks rotating.
+        quarterTurns = 0;
+        turnTicks = 0;
+        rb.headingDeg = targetAngle;
+    }
+
     ctx.pendingMove.active = true;
     ctx.pendingMove.from = prev;
     ctx.pendingMove.to = next;

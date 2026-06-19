@@ -242,7 +242,10 @@ void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int d
     paintRobot(canvas, rb, ctx);
     paintHUD(canvas, rb, delay);
 
-    lastFrame = canvas.clone();
+    // Keep the latest frame for saveCurrentFrame() without deep-cloning every
+    // render tick. cv::Mat assignment is ref-counted; the pixel buffer remains
+    // valid after this local canvas goes out of scope.
+    lastFrame = canvas;
 
     imshow(visualWindowName(), canvas);
 }
