@@ -26,6 +26,8 @@ struct CoverageStats
     int returnCount = 0;
     int rechargeCount = 0;
 
+    std::string turnCostModel = "normal_half_move";
+
     MissionOutcome missionOutcome = MISSION_RUNNING;
     bool finalAtBase = false;
 

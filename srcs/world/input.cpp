@@ -1,6 +1,7 @@
 #include "input.h"
 #include "grid.h"
 #include "dynamic_obstacle.h"
+#include "energy_model.h"
 
 #include <cctype>
 #include <sstream>
@@ -173,6 +174,7 @@ namespace
     void computeInitialFreeCells()
     {
         initialFreeCells = 0;
+        coveredCellCount = 0;
 
         for (int i = 1; i <= rows; i++)
             for (int j = 1; j <= cols; j++)
@@ -199,6 +201,24 @@ namespace
                 return true;
 
         return false;
+    }
+
+    bool consumeOptionalMetricHFlag(const vector<string> &lines, int &index)
+    {
+        if (index >= (int)lines.size())
+            return false;
+
+        if (index + 1 == (int)lines.size() && lines[index] == "0")
+        {
+            setTurnCostModel(TurnCostModel::METRIC_H_NEGLIGIBLE);
+            index++;
+            return true;
+        }
+
+        throw runtime_error(
+            "Input co du lieu thua sau dong robot start. "
+            "Neu chay Metric H, dong cuoi phai chi gom so 0."
+        );
     }
 
     void parseWeightedFormat(const vector<string> &lines, int index)
@@ -288,6 +308,9 @@ namespace
             addObstacle(obs.r, obs.c, obstacleTypeFromChar(obs.type));
         }
 
+        if (index < (int)lines.size())
+            consumeOptionalMetricHFlag(lines, index);
+
         if (index != (int)lines.size())
             throw runtime_error("Input co du lieu thua sau dong robot start.");
 
@@ -375,6 +398,8 @@ void readGrid(istream &in)
 {
     vector<string> lines;
     string raw;
+
+    setTurnCostModel(TurnCostModel::NORMAL_HALF_MOVE);
 
     while (getline(in, raw))
     {

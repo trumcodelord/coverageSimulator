@@ -93,6 +93,7 @@ CoverageStats collectStats(const Robot& rb)
 
     s.returnCount = rb.returnCount;
     s.rechargeCount = rb.rechargeCount;
+    s.turnCostModel = currentTurnCostModelName();
     s.missionOutcome = rb.missionOutcome;
     s.finalAtBase = (rb.pos == rb.base);
 
@@ -116,6 +117,7 @@ void printStats(const CoverageStats& s)
     cout << "Turn energy used: " << formatEnergy(s.turnEnergyUsed) << '\n';
     cout << "Remaining energy: " << formatEnergy(s.remainingEnergy) << '\n';
     cout << "Energy per covered cell: " << formatEnergy(s.energyPerCoveredCell) << '\n';
+    cout << "Turn cost model: " << s.turnCostModel << '\n';
     cout << "Return count: " << s.returnCount << '\n';
     cout << "Recharge count: " << s.rechargeCount << '\n';
     cout << "Mission outcome: " << missionOutcomeName(s.missionOutcome) << '\n';
@@ -143,6 +145,7 @@ void logStats(const CoverageStats& s, const string& filename)
     fout << "Turn energy used: " << formatEnergy(s.turnEnergyUsed) << '\n';
     fout << "Remaining energy: " << formatEnergy(s.remainingEnergy) << '\n';
     fout << "Energy per covered cell: " << formatEnergy(s.energyPerCoveredCell) << '\n';
+    fout << "Turn cost model: " << s.turnCostModel << '\n';
     fout << "Return count: " << s.returnCount << '\n';
     fout << "Recharge count: " << s.rechargeCount << '\n';
     fout << "Mission outcome: " << missionOutcomeName(s.missionOutcome) << '\n';
@@ -167,6 +170,7 @@ void appendBenchmarkCsv(
     {
         fout
             << "map_name,"
+            << "turn_cost_model,"
             << "rows,"
             << "cols,"
             << "total_cells,"
@@ -192,6 +196,7 @@ void appendBenchmarkCsv(
 
     fout << fixed << setprecision(2)
          << csvEscape(mapName) << ','
+         << csvEscape(s.turnCostModel) << ','
          << s.rows << ','
          << s.cols << ','
          << s.totalCells << ','

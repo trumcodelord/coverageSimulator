@@ -14,6 +14,36 @@ namespace
 {
     constexpr double ENERGY_QUANTUM = 0.5;
     constexpr double ENERGY_EPS = 1e-9;
+
+    TurnCostModel activeTurnCostModel = TurnCostModel::NORMAL_HALF_MOVE;
+}
+
+void setTurnCostModel(TurnCostModel model)
+{
+    activeTurnCostModel = model;
+}
+
+TurnCostModel currentTurnCostModel()
+{
+    return activeTurnCostModel;
+}
+
+const char *turnCostModelName(TurnCostModel model)
+{
+    if (model == TurnCostModel::METRIC_H_NEGLIGIBLE)
+        return "metric_h";
+
+    return "normal_half_move";
+}
+
+const char *currentTurnCostModelName()
+{
+    return turnCostModelName(currentTurnCostModel());
+}
+
+bool isMetricHTurnCostModel()
+{
+    return currentTurnCostModel() == TurnCostModel::METRIC_H_NEGLIGIBLE;
 }
 
 double quantizeEnergy(double value)
@@ -61,6 +91,9 @@ double movementEnergyCostForStep(
 
 double turnQuarterEnergyCostAtCell(Cell cell)
 {
+    if (isMetricHTurnCostModel())
+        return 0.0;
+
     int currentTerrainCost = baseTerrainCostAt(cell.r, cell.c);
 
     if (currentTerrainCost >= INF)

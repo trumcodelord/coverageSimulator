@@ -20,6 +20,18 @@ enum EnergyUseCategory
     ENERGY_USE_TURN
 };
 
+enum class TurnCostModel : unsigned char
+{
+    NORMAL_HALF_MOVE,
+    METRIC_H_NEGLIGIBLE
+};
+
+void setTurnCostModel(TurnCostModel model);
+TurnCostModel currentTurnCostModel();
+const char *turnCostModelName(TurnCostModel model);
+const char *currentTurnCostModelName();
+bool isMetricHTurnCostModel();
+
 double quantizeEnergy(double value);
 std::string formatEnergy(double value);
 
