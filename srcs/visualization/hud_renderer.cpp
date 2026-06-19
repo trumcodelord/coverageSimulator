@@ -22,6 +22,22 @@ namespace
     constexpr int MAX_VISIBLE_HUD_EVENTS = 13;
     constexpr int MAX_STORED_HUD_EVENTS = 60;
 
+    struct HUDLayoutCache
+    {
+        bool valid = false;
+        Rect hudBox;
+        Rect gridBox;
+        int canvasWidth = -1;
+        int canvasHeight = -1;
+        int lineCount = -1;
+        int maxLineLength = -1;
+        double fontScale = 0.0;
+        int lineStep = 0;
+        int thickness = 1;
+    };
+
+    HUDLayoutCache hudLayoutCache;
+
     Scalar hudStateColor(const string &state)
     {
         if (state == "NONE") return Scalar(60, 60, 60);
@@ -62,6 +78,24 @@ namespace
             return event;
 
         return event.substr(0, MAX_LEN - 3) + "...";
+    }
+
+    int maxLineLengthOf(const vector<string> &lines)
+    {
+        int result = 0;
+
+        for (const string &line : lines)
+            result = max(result, (int)line.size());
+
+        return result;
+    }
+
+    bool sameRect(const Rect &a, const Rect &b)
+    {
+        return a.x == b.x &&
+               a.y == b.y &&
+               a.width == b.width &&
+               a.height == b.height;
     }
 
     bool fitHUDInBox(
@@ -167,6 +201,64 @@ namespace
         return false;
     }
 
+    bool hudLayoutCacheStillValid(const vector<string> &lines)
+    {
+        if (!hudLayoutCache.valid)
+            return false;
+
+        if (hudLayoutCache.canvasWidth != visualCanvasWidth() ||
+            hudLayoutCache.canvasHeight != visualCanvasHeight())
+        {
+            return false;
+        }
+
+        if (!sameRect(hudLayoutCache.gridBox, visualGridRect()))
+            return false;
+
+        if (hudLayoutCache.lineCount != (int)lines.size())
+            return false;
+
+        // Recompute only when a line grows beyond the size that the cached
+        // layout was fitted for. Shorter text can safely reuse the same layout.
+        if (maxLineLengthOf(lines) > hudLayoutCache.maxLineLength)
+            return false;
+
+        return true;
+    }
+
+    bool getHUDLayout(
+        const vector<string> &lines,
+        Rect &hudBox,
+        double &fontScale,
+        int &lineStep,
+        int &thickness
+    ) {
+        if (hudLayoutCacheStillValid(lines))
+        {
+            hudBox = hudLayoutCache.hudBox;
+            fontScale = hudLayoutCache.fontScale;
+            lineStep = hudLayoutCache.lineStep;
+            thickness = hudLayoutCache.thickness;
+            return true;
+        }
+
+        if (!chooseHUDBox(lines, hudBox, fontScale, lineStep, thickness))
+            return false;
+
+        hudLayoutCache.valid = true;
+        hudLayoutCache.hudBox = hudBox;
+        hudLayoutCache.gridBox = visualGridRect();
+        hudLayoutCache.canvasWidth = visualCanvasWidth();
+        hudLayoutCache.canvasHeight = visualCanvasHeight();
+        hudLayoutCache.lineCount = (int)lines.size();
+        hudLayoutCache.maxLineLength = maxLineLengthOf(lines);
+        hudLayoutCache.fontScale = fontScale;
+        hudLayoutCache.lineStep = lineStep;
+        hudLayoutCache.thickness = thickness;
+
+        return true;
+    }
+
     vector<string> buildHUDLines(const Robot &rb)
     {
         vector<string> lines;
@@ -176,7 +268,6 @@ namespace
             "Energy: " + formatEnergy(rb.energy) + "/" + formatEnergy(rb.maxEnergy)
         );
         lines.push_back("Used: " + formatEnergy(rb.totalEnergyUsed));
-        lines.push_back("Move energy: " + formatEnergy(rb.movementEnergyUsed));
         lines.push_back("Turn energy: " + formatEnergy(rb.turnEnergyUsed));
         lines.push_back("Returns: " + to_string(rb.returnCount));
         lines.push_back("Recharges: " + to_string(rb.rechargeCount));
@@ -235,7 +326,7 @@ void paintHUD(Mat &canvas, const Robot &rb, int delay)
     int lineStep = 0;
     int thickness = 1;
 
-    if (!chooseHUDBox(lines, hudBox, fontScale, lineStep, thickness))
+    if (!getHUDLayout(lines, hudBox, fontScale, lineStep, thickness))
         return;
 
     const int padding = 10;
@@ -253,7 +344,7 @@ void paintHUD(Mat &canvas, const Robot &rb, int delay)
         if (lines[i] == "Behavior log:")
             color = Scalar(80, 80, 80);
 
-        if (i < 8 && lines[i].rfind("State:", 0) == 0)
+        if (lines[i].rfind("State:", 0) == 0)
             color = hudStateColor(hudState);
 
         putText(
