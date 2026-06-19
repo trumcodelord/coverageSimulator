@@ -27,17 +27,31 @@ struct OrientedTraceState
 extern double orientedDist[1001][1001][4];
 extern OrientedTraceState orientedTrace[1001][1001][4];
 
+extern double tempOrientedDist[1001][1001][4];
+extern OrientedTraceState tempOrientedTrace[1001][1001][4];
+
 HeadingDir headingDirFromDegrees(double headingDeg);
 int quarterTurnsBetween(HeadingDir from, HeadingDir to);
 
 void dijkstraOriented(
     Cell start,
     HeadingDir startDir,
-    PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC
+    PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC,
+    Cell stopGoal = Cell{0, 0}
+);
+
+void dijkstraOrientedTemp(
+    Cell start,
+    HeadingDir startDir,
+    PlannerObstacleMode obstacleMode = PlannerObstacleMode::RESPECT_DYNAMIC,
+    Cell stopGoal = Cell{0, 0}
 );
 
 double orientedDistanceTo(Cell goal, HeadingDir goalDir);
 double bestOrientedDistanceTo(Cell goal, HeadingDir *bestDir = nullptr);
+
+double tempOrientedDistanceTo(Cell goal, HeadingDir goalDir);
+double bestTempOrientedDistanceTo(Cell goal, HeadingDir *bestDir = nullptr);
 
 std::vector<Cell> tracePathOriented(
     Cell start,
@@ -50,4 +64,11 @@ std::vector<Cell> traceBestPathOriented(
     Cell start,
     HeadingDir startDir,
     Cell goal
+);
+
+std::vector<Cell> traceTempPathOriented(
+    Cell start,
+    HeadingDir startDir,
+    Cell goal,
+    HeadingDir goalDir
 );

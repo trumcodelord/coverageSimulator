@@ -133,10 +133,13 @@ namespace
     double estimateTargetToBase(
         const CoverageCandidate &candidate,
         const Robot &rb,
-        PlannerObstacleMode mode
+        PlannerObstacleMode mode,
+        HeadingDir *baseArrivalDir = nullptr
     ) {
-        dijkstraOriented(candidate.target, candidate.arrivalDir, mode);
-        return bestOrientedDistanceTo(rb.base);
+        // Use the temp oriented tables so candidate->base feasibility checks do
+        // not destroy the main robot->target trace built by collectCandidates().
+        dijkstraOrientedTemp(candidate.target, candidate.arrivalDir, mode, rb.base);
+        return bestTempOrientedDistanceTo(rb.base, baseArrivalDir);
     }
 
     bool canFullBatteryVisitAndReturn(
@@ -223,7 +226,7 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
         return alreadyAtGoalResult(rb);
 
     HeadingDir startDir = currentHeadingDir(rb);
-    dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC);
+    dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC, rb.base);
 
     HeadingDir baseDir = DIR_NORTH;
     double costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
@@ -285,7 +288,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
         return alreadyAtGoalResult(rb);
 
     HeadingDir startDir = currentHeadingDir(rb);
-    dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC);
+    dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC, rb.base);
 
     HeadingDir baseDir = DIR_NORTH;
     double costToBase = bestOrientedDistanceTo(rb.base, &baseDir);
@@ -363,10 +366,12 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     for (int rank = 0; rank < (int)candidates.size(); rank++)
     {
         const CoverageCandidate &candidate = candidates[rank];
+        HeadingDir returnArrivalDir = DIR_NORTH;
         double costToBase = estimateTargetToBase(
             candidate,
             rb,
-            PlannerObstacleMode::RESPECT_DYNAMIC
+            PlannerObstacleMode::RESPECT_DYNAMIC,
+            &returnArrivalDir
         );
 
         bool fullFeasible = canFullBatteryVisitAndReturn(
@@ -408,8 +413,10 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
         }
 
         HeadingDir startDir = currentHeadingDir(rb);
-        dijkstraOriented(rb.pos, startDir, PlannerObstacleMode::RESPECT_DYNAMIC);
 
+        // collectCandidates() already ran dijkstraOriented() from rb.pos with
+        // this same startDir. candidate->base checks use temp tables, so the
+        // main orientedTrace still describes robot->target and can be reused.
         rb.path = tracePathOriented(
             rb.pos,
             startDir,
@@ -439,6 +446,13 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
 
         if (ctx != nullptr)
         {
+            vector<Cell> returnPreview = traceTempPathOriented(
+                candidate.target,
+                candidate.arrivalDir,
+                rb.base,
+                returnArrivalDir
+            );
+
             logDecisionPath(
                 *ctx,
                 rb,
@@ -447,8 +461,11 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                 "rank=" + to_string(rank + 1) +
                 " path_cost=" + formatEnergy(builtPathCost) +
                 " arrival_dir=" + to_string((int)candidate.arrivalDir) +
+                " cost_to_base=" + formatEnergy(costToBase) +
+                " return_arrival_dir=" + to_string((int)returnArrivalDir) +
                 " first_step=" + cellText(rb.path[rb.pathID]) +
-                " path=" + compactPathText(rb.path)
+                " path=" + compactPathText(rb.path) +
+                " return_path_preview=" + compactPathText(returnPreview)
             );
         }
 
