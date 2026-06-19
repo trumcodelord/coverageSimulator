@@ -42,16 +42,6 @@ namespace
         return raw.substr(left, right - left + 1);
     }
 
-    string normalizeLine(const string &raw)
-    {
-        string s;
-        for (char ch : raw)
-        {
-            if (!isspace((unsigned char)ch))
-                s.push_back(ch);
-        }
-        return s;
-    }
 
     bool isIntegerToken(const string &s)
     {
@@ -316,77 +306,6 @@ namespace
 
         computeInitialFreeCells();
     }
-
-    void parseLegacyFormat(const vector<string> &lines, int index)
-    {
-        vector<string> mapLines;
-
-        for (int i = index; i < (int)lines.size(); i++)
-        {
-            string line = normalizeLine(lines[i]);
-            if (!line.empty())
-                mapLines.push_back(line);
-        }
-
-        if (mapLines.empty())
-            throw runtime_error("Input map rong sau dong dung luong pin.");
-
-        rows = (int)mapLines.size();
-        cols = (int)mapLines[0].size();
-        validateDimensions(rows, cols);
-
-        for (int i = 1; i < (int)mapLines.size(); i++)
-        {
-            if ((int)mapLines[i].size() != cols)
-                throw runtime_error("Cac dong trong map khong cung do dai.");
-        }
-
-        resetWorldGrids();
-
-        bool foundRobot = false;
-
-        for (int i = 1; i <= rows; i++)
-        {
-            for (int j = 1; j <= cols; j++)
-            {
-                char c = mapLines[i - 1][j - 1];
-
-                if (c == 'R')
-                {
-                    start = {i, j};
-                    setFreeTerrainCell(i, j, 1);
-                    foundRobot = true;
-                }
-                else if (c == '0')
-                {
-                    setFreeTerrainCell(i, j, 1);
-                }
-                else if (c == '1' || c == 'W')
-                {
-                    setWallCell(i, j);
-                }
-                else if (c == 'G')
-                {
-                    setFreeTerrainCell(i, j, 1);
-                    addObstacle(i, j, ObstacleType::GUARD);
-                }
-                else if (c == 'V')
-                {
-                    setFreeTerrainCell(i, j, 1);
-                    addObstacle(i, j, ObstacleType::VEHICLE);
-                }
-                else
-                {
-                    throw runtime_error("Ky tu khong hop le trong legacy map.");
-                }
-            }
-        }
-
-        if (!foundRobot)
-            throw runtime_error("Map khong co vi tri robot R.");
-
-        computeInitialFreeCells();
-    }
 }
 
 int configuredMaxEnergy()
@@ -425,8 +344,14 @@ void readGrid(istream &in)
     int declaredRows = 0;
     int declaredCols = 0;
 
-    if (parseTwoIntegerLine(lines[1], declaredRows, declaredCols))
-        parseWeightedFormat(lines, 1);
-    else
-        parseLegacyFormat(lines, 1);
+    if (!parseTwoIntegerLine(lines[1], declaredRows, declaredCols))
+    {
+        throw runtime_error(
+            "Input legacy khong con duoc ho tro. "
+            "Hay chuyen test sang weighted format: pin, rows cols, terrain matrix, "
+            "so vat can dong, robot start, va tuy chon dong 0 cho Metric H."
+        );
+    }
+
+    parseWeightedFormat(lines, 1);
 }

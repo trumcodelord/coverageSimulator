@@ -1,0 +1,30 @@
+210
+21 35
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 W W W W W W W W
+W W W W W W W 1 W W W W W W W W W W W W W W W W W W 1 W W W W W W W W
+W W W W W W W 1 W W W W W W W W W W W W W W W W W W 1 W W W W W W W W
+W W W W W W W 1 W W W 1 1 1 W W W W W 1 1 1 W W W W 1 W W W W W W W W
+W 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 W
+W W W W W W W W W W W 1 1 1 W W W W W 1 1 1 W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W W
+4
+V 11 16
+V 7 19
+V 11 10
+V 7 15
+11 2
+0
