@@ -5,10 +5,10 @@
 #include "dynamic_obstacle.h"
 #include "energy_model.h"
 #include "grid.h"
+#include "motion_geometry.h"
 #include "opencv.h"
 
 #include <algorithm>
-#include <cmath>
 #include <string>
 
 namespace
@@ -103,38 +103,6 @@ namespace
         );
 
         pushHUDEvent("[RECHARGE] Tien the di ngang base, sac pin.");
-    }
-
-    double angleForMove(Cell from, Cell to)
-    {
-        int dr = to.r - from.r;
-        int dc = to.c - from.c;
-
-        if (dc > 0) return -90.0;
-        if (dc < 0) return 90.0;
-        if (dr > 0) return 180.0;
-        return 0.0;
-    }
-
-    double normalizeAngle(double angle)
-    {
-        while (angle <= -180.0) angle += 360.0;
-        while (angle > 180.0) angle -= 360.0;
-        return angle;
-    }
-
-    double shortestTurnDelta(double fromDeg, double toDeg)
-    {
-        return normalizeAngle(toDeg - fromDeg);
-    }
-
-    int turnQuarterCount(double deltaDeg)
-    {
-        double amount = std::fabs(deltaDeg);
-        if (amount < 1e-6)
-            return 0;
-
-        return amount > 135.0 ? 2 : 1;
     }
 
     void consumeTurnQuarterEnergy(Robot &rb, CoverageContext &ctx)
@@ -463,7 +431,7 @@ RobotMoveResult moveRobotAlongCurrentPath(
     int stepTicks = stepTicksForMode(ctx.mode);
     double targetAngle = angleForMove(prev, next);
     double turnDelta = shortestTurnDelta(rb.headingDeg, targetAngle);
-    int quarterTurns = turnQuarterCount(turnDelta);
+    int quarterTurns = turnQuarterCountFromDelta(turnDelta);
     int turnTicks = quarterTurns * stepTicks;
 
     ctx.pendingMove.active = true;

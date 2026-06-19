@@ -2,6 +2,7 @@
 #include "behavior_log.h"
 #include "energy_model.h"
 #include "grid.h"
+#include "motion_geometry.h"
 #include "path_safety.h"
 #include "planner.h"
 
@@ -19,24 +20,6 @@ namespace
         Cell target = {0, 0};
         HeadingDir arrivalDir = DIR_NORTH;
     };
-
-    HeadingDir currentHeadingDir(const Robot &rb)
-    {
-        return headingDirFromDegrees(rb.headingDeg);
-    }
-
-    bool directionForStep(Cell from, Cell to, HeadingDir &dir)
-    {
-        int dr = to.r - from.r;
-        int dc = to.c - from.c;
-
-        if (dr == -1 && dc == 0) { dir = DIR_NORTH; return true; }
-        if (dr == 0 && dc == 1)  { dir = DIR_EAST;  return true; }
-        if (dr == 1 && dc == 0)  { dir = DIR_SOUTH; return true; }
-        if (dr == 0 && dc == -1) { dir = DIR_WEST;  return true; }
-
-        return false;
-    }
 
     int movementCostForPathCell(Cell p, PlannerObstacleMode mode)
     {

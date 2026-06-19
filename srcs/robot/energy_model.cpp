@@ -1,43 +1,11 @@
 #include "energy_model.h"
 
 #include "grid.h"
+#include "motion_geometry.h"
 
 #include <algorithm>
-#include <cmath>
 
 using namespace std;
-
-namespace
-{
-    double angleForMove(Cell from, Cell to)
-    {
-        int dr = to.r - from.r;
-        int dc = to.c - from.c;
-
-        if (dc > 0) return -90.0;
-        if (dc < 0) return 90.0;
-        if (dr > 0) return 180.0;
-        return 0.0;
-    }
-
-    double normalizeAngle(double angle)
-    {
-        while (angle <= -180.0) angle += 360.0;
-        while (angle > 180.0) angle -= 360.0;
-        return angle;
-    }
-
-    int quarterTurnsForMove(const Robot &rb, Cell next)
-    {
-        double targetAngle = angleForMove(rb.pos, next);
-        double delta = fabs(normalizeAngle(targetAngle - rb.headingDeg));
-
-        if (delta < 1e-6)
-            return 0;
-
-        return delta > 135.0 ? 2 : 1;
-    }
-}
 
 int movementEnergyCostForStep(
     const Robot &,
