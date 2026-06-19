@@ -29,7 +29,6 @@ namespace behavior_log_detail
         if (file.is_open())
         {
             file << message << '\n';
-            file.flush();
         }
     }
 
@@ -85,7 +84,10 @@ inline void closeBehaviorLog()
     std::ofstream &file = behavior_log_detail::logFile();
 
     if (file.is_open())
+    {
+        file.flush();
         file.close();
+    }
 }
 
 inline std::string behaviorLogPath()

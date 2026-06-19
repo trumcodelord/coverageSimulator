@@ -102,7 +102,10 @@ inline void closeObstacleTrace()
     std::ofstream &file = obstacle_trace_detail::traceFile();
 
     if (file.is_open())
+    {
+        file.flush();
         file.close();
+    }
 }
 
 inline std::string obstacleTracePath()
@@ -145,7 +148,6 @@ inline void logObstacleTraceSnapshot(
             << 0 << ',' << (robotAvoidanceEnabled ? 1 : 0) << ','
             << robotAvoidanceCell.r << ',' << robotAvoidanceCell.c << ',' << -1 << '\n';
 
-        file.flush();
         return;
     }
 
@@ -182,6 +184,4 @@ inline void logObstacleTraceSnapshot(
             << blockedAtPos << ',' << (robotAvoidanceEnabled ? 1 : 0) << ','
             << robotAvoidanceCell.r << ',' << robotAvoidanceCell.c << ',' << distToRobot << '\n';
     }
-
-    file.flush();
 }
