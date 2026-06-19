@@ -2,6 +2,7 @@
 
 #include "dynamic_obstacle.h"
 #include "entity_renderer.h"
+#include "grid.h"
 #include "hud_renderer.h"
 #include "map_renderer.h"
 #include "visual_assets.h"
@@ -16,8 +17,14 @@ using namespace cv;
 namespace
 {
     Mat lastFrame;
+    Mat staticMapLayer;
     bool showCoordinateHeaders = false;
     int speedMultiplier = 1;
+    int cachedRows = -1;
+    int cachedCols = -1;
+    int cachedCellSize = -1;
+    int cachedCanvasWidth = -1;
+    int cachedCanvasHeight = -1;
 
     void ensureParentDirectory(const std::string &path)
     {
@@ -66,6 +73,42 @@ namespace
             speedMultiplier = 10;
         else
             speedMultiplier = 1;
+    }
+
+    bool staticMapLayerMatchesCurrentLayout()
+    {
+        return !staticMapLayer.empty() &&
+               cachedRows == rows &&
+               cachedCols == cols &&
+               cachedCellSize == visualCellSize() &&
+               cachedCanvasWidth == visualCanvasWidth() &&
+               cachedCanvasHeight == visualCanvasHeight();
+    }
+
+    void rebuildStaticMapLayer()
+    {
+        staticMapLayer = Mat(
+            visualCanvasHeight(),
+            visualCanvasWidth(),
+            CV_8UC3,
+            Scalar(240, 240, 240)
+        );
+
+        paintStaticMapLayer(staticMapLayer);
+
+        cachedRows = rows;
+        cachedCols = cols;
+        cachedCellSize = visualCellSize();
+        cachedCanvasWidth = visualCanvasWidth();
+        cachedCanvasHeight = visualCanvasHeight();
+    }
+
+    Mat baseFrameFromStaticLayer()
+    {
+        if (!staticMapLayerMatchesCurrentLayout())
+            rebuildStaticMapLayer();
+
+        return staticMapLayer.clone();
     }
 
     void pushManualVehicleTargetEvent()
@@ -169,23 +212,21 @@ void initWindow()
 
     setupVisualLayout();
     loadVisualizationAssets();
+    rebuildStaticMapLayer();
 }
 
 void closeWindow()
 {
+    staticMapLayer.release();
+    lastFrame.release();
     destroyWindow(visualWindowName());
 }
 
 void drawFrame(const Robot &rb, const CoverageContext &ctx, bool showPath, int delay)
 {
-    Mat canvas(
-        visualCanvasHeight(),
-        visualCanvasWidth(),
-        CV_8UC3,
-        Scalar(240, 240, 240)
-    );
+    Mat canvas = baseFrameFromStaticLayer();
 
-    paintMapCells(canvas);
+    paintDynamicMapOverlay(canvas);
     paintGridLines(canvas);
 
     if (showCoordinateHeaders)

@@ -97,27 +97,57 @@ namespace
             FILLED
         );
     }
+
+    void fillCell(Mat &canvas, int r, int c, Scalar color)
+    {
+        Point tl = visualCellTopLeft(r, c);
+        Point br(
+            tl.x + visualCellSize(),
+            tl.y + visualCellSize()
+        );
+
+        rectangle(canvas, tl, br, color, FILLED);
+    }
 }
 
-void paintMapCells(Mat &canvas, bool showLogicalCoverage)
+void paintStaticMapLayer(Mat &canvas)
 {
     for (int r = 1; r <= rows; r++)
     {
         for (int c = 1; c <= cols; c++)
         {
+            fillCell(canvas, r, c, terrainColorForCell(r, c));
+        }
+    }
+}
+
+void paintDynamicMapOverlay(Mat &canvas, bool showLogicalCoverage)
+{
+    for (int r = 1; r <= rows; r++)
+    {
+        for (int c = 1; c <= cols; c++)
+        {
+            bool targetCell = isCoverageTargetCell(r, c);
+            bool dynamicBlocked = targetCell && isDynamicBlockedCell(r, c);
+            bool logicallyCovered = targetCell && showLogicalCoverage && covered[r][c];
+            bool baseCell = targetCell && isBaseCell(r, c);
+
+            if (!dynamicBlocked && !logicallyCovered && !baseCell)
+                continue;
+
             Scalar color = terrainColorForCell(r, c);
 
-            if (isCoverageTargetCell(r, c) && isDynamicBlockedCell(r, c))
+            if (dynamicBlocked)
             {
                 color = blendColor(color, Scalar(180, 105, 255), 0.65);
             }
-            else if (isCoverageTargetCell(r, c) && showLogicalCoverage && covered[r][c])
+            else if (logicallyCovered)
             {
                 // Keep terrain grayscale visible; coverage is a green overlay.
                 color = blendColor(color, Scalar(80, 210, 80), 0.28);
             }
 
-            if (isCoverageTargetCell(r, c) && isBaseCell(r, c))
+            if (baseCell)
             {
                 // Keep the base recognizable without hiding the terrain layer.
                 color = blendColor(color, Scalar(255, 235, 180), 0.20);
@@ -131,10 +161,16 @@ void paintMapCells(Mat &canvas, bool showLogicalCoverage)
 
             rectangle(canvas, tl, br, color, FILLED);
 
-            if (isBaseCell(r, c) && isCoverageTargetCell(r, c))
+            if (baseCell)
                 paintBaseMarker(canvas, tl, br);
         }
     }
+}
+
+void paintMapCells(Mat &canvas, bool showLogicalCoverage)
+{
+    paintStaticMapLayer(canvas);
+    paintDynamicMapOverlay(canvas, showLogicalCoverage);
 }
 
 void paintGridLines(Mat &canvas)
