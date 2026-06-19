@@ -9,6 +9,7 @@ int terrainCost[1001][1001];
 const int dr[5] = {0, 1, 0, -1, 0};
 const int dc[5] = {0, 0, 1, 0, -1};
 int initialFreeCells = 0;
+int coveredCellCount = 0;
 
 bool inBounds(int r, int c)
 {
@@ -73,18 +74,19 @@ int terrainCostAt(int r, int c)
 
 void markCovered(int r, int c)
 {
-    if (isFree(r, c))
-        covered[r][c] = 1;
+    if (!isFree(r, c))
+        return;
+
+    if (covered[r][c])
+        return;
+
+    covered[r][c] = true;
+    coveredCellCount++;
 }
 
 bool allCovered()
 {
-    for (int i = 1; i <= rows; i++)
-        for (int j = 1; j <= cols; j++)
-            if (isCoverageTargetCell(i, j) && !covered[i][j])
-                return false;
-
-    return true;
+    return coveredCellCount >= initialFreeCells;
 }
 
 vector<Cell> getNeighbors(Cell p)

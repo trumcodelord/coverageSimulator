@@ -38,6 +38,18 @@ static std::mt19937 manualVehicleRng(
 );
 
 static std::vector<Cell> dirtyDynamicCells;
+static std::vector<Cell> currentDynamicBlockedCells;
+static std::vector<Cell> occupiedReservationCells;
+static std::vector<Cell> reservedReservationCells;
+
+static bool containsCell(const std::vector<Cell> &cells, Cell p)
+{
+    for (const Cell &cell : cells)
+        if (cell == p)
+            return true;
+
+    return false;
+}
 
 static void markDirtyDynamicCellNoLock(Cell p)
 {
@@ -46,9 +58,8 @@ static void markDirtyDynamicCellNoLock(Cell p)
 
     // Keep the list small during fast animation. Duplicate dirty cells do not
     // add information for path invalidation.
-    for (const Cell &existing : dirtyDynamicCells)
-        if (existing == p)
-            return;
+    if (containsCell(dirtyDynamicCells, p))
+        return;
 
     dirtyDynamicCells.push_back(p);
 }
@@ -142,6 +153,12 @@ static bool wouldThreatenRobot(const DynamicObstacle &obs, float nx, float ny)
 static bool canPlace(int r, int c)
 {
     if (isForbiddenDynamicObstacleCell(r, c)) return false;
+
+    Cell p = {r, c};
+    for (const DynamicObstacle &obs : obstacles)
+        if (obs.pos == p)
+            return false;
+
     if (isDynamicBlockedCell(r, c)) return false;
     return true;
 }
@@ -188,20 +205,36 @@ static bool isLineFree(float x1, float y1, float x2, float y2)
 
 static void clearReservationGrids()
 {
-    for (int i = 1; i <= rows; i++)
-        for (int j = 1; j <= cols; j++)
-        {
-            occupiedCount[i][j] = 0;
-            reservedNext[i][j] = false;
-        }
+    for (Cell p : occupiedReservationCells)
+        if (inBounds(p.r, p.c))
+            occupiedCount[p.r][p.c] = 0;
+
+    occupiedReservationCells.clear();
+
+    for (Cell p : reservedReservationCells)
+        if (inBounds(p.r, p.c))
+            reservedNext[p.r][p.c] = false;
+
+    reservedReservationCells.clear();
+}
+
+static void addOccupiedCell(Cell p)
+{
+    if (!inBounds(p.r, p.c))
+        return;
+
+    if (occupiedCount[p.r][p.c] == 0)
+        occupiedReservationCells.push_back(p);
+
+    occupiedCount[p.r][p.c]++;
 }
 
 static void buildOccupiedGrid()
 {
     clearReservationGrids();
+
     for (const auto &obs : obstacles)
-        if (inBounds(obs.pos.r, obs.pos.c))
-            occupiedCount[obs.pos.r][obs.pos.c]++;
+        addOccupiedCell(obs.pos);
 }
 
 static bool occupiedByAnotherObstacle(const DynamicObstacle &obs, Cell p)
@@ -214,7 +247,14 @@ static bool occupiedByAnotherObstacle(const DynamicObstacle &obs, Cell p)
 
 static void reserveCell(Cell p)
 {
-    if (inBounds(p.r, p.c)) reservedNext[p.r][p.c] = true;
+    if (!inBounds(p.r, p.c))
+        return;
+
+    if (!reservedNext[p.r][p.c])
+    {
+        reservedNext[p.r][p.c] = true;
+        reservedReservationCells.push_back(p);
+    }
 }
 
 static bool canReserveCell(Cell p)
@@ -258,32 +298,49 @@ static void moveStraightWithReservation(DynamicObstacle &obs)
     reserveCell(obs.pos);
 }
 
+static std::vector<Cell> collectCurrentObstacleCellsNoLock()
+{
+    std::vector<Cell> cells;
+
+    for (const DynamicObstacle &obs : obstacles)
+    {
+        Cell p = obs.pos;
+
+        if (!inBounds(p.r, p.c))
+            continue;
+
+        if (!containsCell(cells, p))
+            cells.push_back(p);
+    }
+
+    return cells;
+}
+
+static void setDynamicBlockedCellNoLock(Cell p, bool blocked)
+{
+    if (!inBounds(p.r, p.c))
+        return;
+
+    if (dynamicBlocked[p.r][p.c] == blocked)
+        return;
+
+    dynamicBlocked[p.r][p.c] = blocked;
+    markDirtyDynamicCellNoLock(p);
+}
+
 static void syncToGrid()
 {
-    static bool nextBlocked[1001][1001];
+    std::vector<Cell> nextBlockedCells = collectCurrentObstacleCellsNoLock();
 
-    for (int i = 1; i <= rows; i++)
-        for (int j = 1; j <= cols; j++)
-            nextBlocked[i][j] = false;
+    for (Cell oldCell : currentDynamicBlockedCells)
+        if (!containsCell(nextBlockedCells, oldCell))
+            setDynamicBlockedCellNoLock(oldCell, false);
 
-    for (auto &obs : obstacles)
-    {
-        int r = obs.pos.r;
-        int c = obs.pos.c;
-        if (inBounds(r, c))
-            nextBlocked[r][c] = true;
-    }
+    for (Cell newCell : nextBlockedCells)
+        if (!containsCell(currentDynamicBlockedCells, newCell))
+            setDynamicBlockedCellNoLock(newCell, true);
 
-    for (int i = 1; i <= rows; i++)
-    {
-        for (int j = 1; j <= cols; j++)
-        {
-            if (dynamicBlocked[i][j] != nextBlocked[i][j])
-                markDirtyDynamicCellNoLock({i, j});
-
-            dynamicBlocked[i][j] = nextBlocked[i][j];
-        }
-    }
+    currentDynamicBlockedCells = nextBlockedCells;
 }
 
 static bool validManualVehicleIndexNoLock(int idx)
@@ -474,6 +531,8 @@ void initDynamicObstacle()
     manualVehicleControlIndex = -1;
     robotAvoidanceCell = start;
     robotAvoidanceEnabled = inBounds(start.r, start.c);
+    clearReservationGrids();
+    currentDynamicBlockedCells.clear();
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
             dynamicBlocked[i][j] = false;

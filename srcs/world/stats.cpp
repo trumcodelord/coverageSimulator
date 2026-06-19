@@ -71,13 +71,12 @@ CoverageStats collectStats(const Robot& rb)
     if (s.totalCells > 0)
         s.obstacleDensity = (double)s.obstacleCells / s.totalCells * 100.0;
 
+    s.coveredCells = coveredCellCount;
+
     for (int i = 1; i <= rows; i++)
     {
         for (int j = 1; j <= cols; j++)
         {
-            if (covered[i][j])
-                s.coveredCells++;
-
             if (isDynamicBlockedCell(i, j))
                 s.dynamicBlockedCells++;
         }

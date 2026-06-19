@@ -10,6 +10,7 @@ extern bool dynamicBlocked[1001][1001];
 extern int terrainCost[1001][1001];
 extern const int dr[5], dc[5];
 extern int initialFreeCells;
+extern int coveredCellCount;
 
 bool inBounds(int r, int c);
 
