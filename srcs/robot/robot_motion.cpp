@@ -248,14 +248,14 @@ namespace
             if (islandCleanupCells > 0)
             {
                 pushHUDEvent(
-                    "[ISLAND] Don dao cuc bo."
+                    "[ISLAND] Phat hien cum chua phu nho, uu tien don cuc bo."
                 );
 
                 logRobotEvent(
                     "INFO",
                     "COVERAGE",
                     "uncovered_island_detected",
-                    "Covering this cell split nearby uncovered cells into a small cleanup component.",
+                    "Covering this cell exposed a small uncovered island or local pocket cleanup component.",
                     rb,
                     ctx.mode,
                     "decision_id=" + std::to_string(ctx.activeDecisionId) +
