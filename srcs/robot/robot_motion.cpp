@@ -7,6 +7,7 @@
 #include "grid.h"
 #include "motion_geometry.h"
 #include "opencv.h"
+#include "uncovered_island.h"
 
 #include <algorithm>
 #include <string>
@@ -239,6 +240,31 @@ namespace
         }
 
         markCovered(rb.pos.r, rb.pos.c);
+
+        if (move.enteredUncoveredCell)
+        {
+            int islandCleanupCells = uncovered_island::notifyCoveredCell(rb.pos);
+
+            if (islandCleanupCells > 0)
+            {
+                pushHUDEvent(
+                    "[ISLAND] Don dao cuc bo."
+                );
+
+                logRobotEvent(
+                    "INFO",
+                    "COVERAGE",
+                    "uncovered_island_detected",
+                    "Covering this cell split nearby uncovered cells into a small cleanup component.",
+                    rb,
+                    ctx.mode,
+                    "decision_id=" + std::to_string(ctx.activeDecisionId) +
+                    " pos=" + cellText(rb.pos) +
+                    " new_cleanup_cells=" + std::to_string(islandCleanupCells) +
+                    " pending_cleanup_cells=" + std::to_string(uncovered_island::pendingCleanupCellCount())
+                );
+            }
+        }
 
         if (shouldOpportunisticallyRecharge(rb, ctx))
             opportunisticRechargeAtBase(rb, ctx);

@@ -5,6 +5,7 @@
 #include "motion_geometry.h"
 #include "path_safety.h"
 #include "planner.h"
+#include "uncovered_island.h"
 
 #include <algorithm>
 #include <string>
@@ -17,8 +18,14 @@ namespace
     struct CoverageCandidate
     {
         double costFromRobot = INF;
+        double costToBase = INF;
         Cell target = {0, 0};
         HeadingDir arrivalDir = DIR_NORTH;
+        HeadingDir returnArrivalDir = DIR_NORTH;
+        int islandPriority = uncovered_island::NO_ISLAND_PRIORITY;
+        int revisitCountOnPath = 0;
+        int frontierScore = 0;
+        vector<Cell> path;
     };
 
     int movementCostForPathCell(Cell p, PlannerObstacleMode mode)
@@ -86,17 +93,100 @@ namespace
         return text;
     }
 
-    bool compareCandidateByDistance(
+    int frontierScore(Cell target)
+    {
+        int score = 0;
+
+        for (int k = 1; k <= 4; k++)
+        {
+            Cell n = {target.r + dr[k], target.c + dc[k]};
+
+            if (uncovered_island::isUncoveredTarget(n))
+                score++;
+        }
+
+        return score;
+    }
+
+    int revisitCountOnPath(const vector<Cell> &path)
+    {
+        int count = 0;
+
+        for (int i = 1; i < (int)path.size(); i++)
+        {
+            Cell p = path[i];
+
+            if (isCoverageTargetCell(p.r, p.c) && covered[p.r][p.c])
+                count++;
+        }
+
+        return count;
+    }
+
+    bool compareCandidateLexicographic(
         const CoverageCandidate &a,
         const CoverageCandidate &b
     ) {
-        if (a.costFromRobot != b.costFromRobot)
-            return a.costFromRobot < b.costFromRobot;
         if (a.target.r != b.target.r)
             return a.target.r < b.target.r;
         if (a.target.c != b.target.c)
             return a.target.c < b.target.c;
         return (int)a.arrivalDir < (int)b.arrivalDir;
+    }
+
+    bool samePrimaryCoverageRank(
+        const CoverageCandidate &a,
+        const CoverageCandidate &b
+    ) {
+        return a.costFromRobot == b.costFromRobot &&
+               a.islandPriority == b.islandPriority &&
+               a.revisitCountOnPath == b.revisitCountOnPath &&
+               a.frontierScore == b.frontierScore;
+    }
+
+    bool compareCandidateByCoveragePolicy(
+        const CoverageCandidate &a,
+        const CoverageCandidate &b
+    ) {
+        if (a.costFromRobot != b.costFromRobot)
+            return a.costFromRobot < b.costFromRobot;
+
+        if (a.islandPriority != b.islandPriority)
+            return a.islandPriority < b.islandPriority;
+
+        if (a.revisitCountOnPath != b.revisitCountOnPath)
+            return a.revisitCountOnPath < b.revisitCountOnPath;
+
+        if (a.frontierScore != b.frontierScore)
+            return a.frontierScore > b.frontierScore;
+
+        // costToBase is intentionally late: feasibility already guarantees that
+        // the robot can return home; this only preserves a better safety margin
+        // when coverage-oriented metrics are otherwise equal.
+        if (a.costToBase != b.costToBase)
+            return a.costToBase < b.costToBase;
+
+        // Deterministic fallback only; this is not a navigation policy.
+        return compareCandidateLexicographic(a, b);
+    }
+
+    bool compareCandidateByCheapPolicy(
+        const CoverageCandidate &a,
+        const CoverageCandidate &b
+    ) {
+        if (a.costFromRobot != b.costFromRobot)
+            return a.costFromRobot < b.costFromRobot;
+
+        if (a.islandPriority != b.islandPriority)
+            return a.islandPriority < b.islandPriority;
+
+        if (a.revisitCountOnPath != b.revisitCountOnPath)
+            return a.revisitCountOnPath < b.revisitCountOnPath;
+
+        if (a.frontierScore != b.frontierScore)
+            return a.frontierScore > b.frontierScore;
+
+        return compareCandidateLexicographic(a, b);
     }
 
     vector<CoverageCandidate> collectCandidates(
@@ -122,11 +212,25 @@ namespace
                 if (cost >= INF)
                     continue;
 
-                candidates.push_back({cost, target, arrivalDir});
+                CoverageCandidate candidate;
+                candidate.costFromRobot = cost;
+                candidate.target = target;
+                candidate.arrivalDir = arrivalDir;
+                candidate.islandPriority = uncovered_island::cleanupPriorityForTarget(target);
+                candidate.frontierScore = frontierScore(target);
+                candidate.path = tracePathOriented(
+                    rb.pos,
+                    startDir,
+                    candidate.target,
+                    candidate.arrivalDir
+                );
+                candidate.revisitCountOnPath = revisitCountOnPath(candidate.path);
+
+                candidates.push_back(candidate);
             }
         }
 
-        sort(candidates.begin(), candidates.end(), compareCandidateByDistance);
+        sort(candidates.begin(), candidates.end(), compareCandidateByCheapPolicy);
         return candidates;
     }
 
@@ -362,114 +466,139 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
 
     bool foundCurrentEnergyLow = false;
     bool foundMaxEnergyInfeasible = false;
+    HeadingDir startDir = currentHeadingDir(rb);
 
-    for (int rank = 0; rank < (int)candidates.size(); rank++)
+    for (int groupStart = 0; groupStart < (int)candidates.size(); )
     {
-        const CoverageCandidate &candidate = candidates[rank];
-        HeadingDir returnArrivalDir = DIR_NORTH;
-        double costToBase = estimateTargetToBase(
-            candidate,
-            rb,
-            PlannerObstacleMode::RESPECT_DYNAMIC,
-            &returnArrivalDir
-        );
+        int groupEnd = groupStart + 1;
 
-        bool fullFeasible = canFullBatteryVisitAndReturn(
-            rb,
-            candidate.costFromRobot,
-            costToBase
-        );
-
-        bool currentFeasible = canVisitTargetAndReturn(
-            rb,
-            candidate.costFromRobot,
-            costToBase
-        );
-
-        if (!fullFeasible)
+        while (groupEnd < (int)candidates.size() &&
+               samePrimaryCoverageRank(candidates[groupStart], candidates[groupEnd]))
         {
-            foundMaxEnergyInfeasible = true;
-            continue;
+            groupEnd++;
         }
 
-        if (!currentFeasible)
-        {
-            foundCurrentEnergyLow = true;
-            continue;
-        }
+        vector<CoverageCandidate> feasibleGroup;
 
-        if (ctx != nullptr)
+        for (int i = groupStart; i < groupEnd; i++)
         {
-            beginDecisionTrace(
-                *ctx,
+            CoverageCandidate candidate = candidates[i];
+            candidate.costToBase = estimateTargetToBase(
+                candidate,
                 rb,
-                "coverage",
-                candidate.target,
-                "nearest_uncovered_energy_feasible",
-                (int)candidates.size(),
+                PlannerObstacleMode::RESPECT_DYNAMIC,
+                &candidate.returnArrivalDir
+            );
+
+            bool fullFeasible = canFullBatteryVisitAndReturn(
+                rb,
                 candidate.costFromRobot,
-                costToBase
+                candidate.costToBase
             );
+
+            bool currentFeasible = canVisitTargetAndReturn(
+                rb,
+                candidate.costFromRobot,
+                candidate.costToBase
+            );
+
+            if (!fullFeasible)
+            {
+                foundMaxEnergyInfeasible = true;
+                continue;
+            }
+
+            if (!currentFeasible)
+            {
+                foundCurrentEnergyLow = true;
+                continue;
+            }
+
+            feasibleGroup.push_back(candidate);
         }
 
-        HeadingDir startDir = currentHeadingDir(rb);
-
-        // collectCandidates() already ran dijkstraOriented() from rb.pos with
-        // this same startDir. candidate->base checks use temp tables, so the
-        // main orientedTrace still describes robot->target and can be reused.
-        rb.path = tracePathOriented(
-            rb.pos,
-            startDir,
-            candidate.target,
-            candidate.arrivalDir
+        sort(
+            feasibleGroup.begin(),
+            feasibleGroup.end(),
+            compareCandidateByCoveragePolicy
         );
 
-        if ((int)rb.path.size() <= 1)
+        for (int rankInGroup = 0; rankInGroup < (int)feasibleGroup.size(); rankInGroup++)
         {
-            markCovered(candidate.target.r, candidate.target.c);
-            clearRobotPath(rb);
-            return rebuildPathToNearestUncoveredTarget(rb, ctx);
+            const CoverageCandidate &candidate = feasibleGroup[rankInGroup];
+
+            if (ctx != nullptr)
+            {
+                beginDecisionTrace(
+                    *ctx,
+                    rb,
+                    "coverage",
+                    candidate.target,
+                    "nearest_uncovered_island_aware_feasible",
+                    (int)candidates.size(),
+                    candidate.costFromRobot,
+                    candidate.costToBase
+                );
+            }
+
+            // collectCandidates() already ran dijkstraOriented() from rb.pos with
+            // this same startDir. candidate->base checks use temp tables, so the
+            // main orientedTrace still describes robot->target and can be reused.
+            rb.path = candidate.path;
+
+            if ((int)rb.path.size() <= 1)
+            {
+                markCovered(candidate.target.r, candidate.target.c);
+                clearRobotPath(rb);
+                return rebuildPathToNearestUncoveredTarget(rb, ctx);
+            }
+
+            rb.pathID = 1;
+
+            if (hasBlockedCellAnywhereOnPath(rb) || !isNextPathCellFree(rb))
+            {
+                // A dynamic obstacle may have occupied the selected candidate path
+                // after candidate collection. Do not fail the whole decision; try
+                // the next reachable uncovered candidate instead.
+                clearRobotPath(rb);
+                continue;
+            }
+
+            double builtPathCost = pathEnergyCost(rb.path, startDir);
+
+            if (ctx != nullptr)
+            {
+                vector<Cell> returnPreview = traceTempPathOriented(
+                    candidate.target,
+                    candidate.arrivalDir,
+                    rb.base,
+                    candidate.returnArrivalDir
+                );
+
+                logDecisionPath(
+                    *ctx,
+                    rb,
+                    "coverage_path_built",
+                    true,
+                    "rank=" + to_string(groupStart + rankInGroup + 1) +
+                    " path_cost=" + formatEnergy(builtPathCost) +
+                    " arrival_dir=" + to_string((int)candidate.arrivalDir) +
+                    " cost_to_base=" + formatEnergy(candidate.costToBase) +
+                    " return_arrival_dir=" + to_string((int)candidate.returnArrivalDir) +
+                    " island_priority=" + to_string(candidate.islandPriority) +
+                    " pending_island_cells=" + to_string(uncovered_island::pendingCleanupCellCount()) +
+                    " revisit_count_on_path=" + to_string(candidate.revisitCountOnPath) +
+                    " frontier_score=" + to_string(candidate.frontierScore) +
+                    " first_step=" + cellText(rb.path[rb.pathID]) +
+                    " path=" + compactPathText(rb.path) +
+                    " return_path_preview=" + compactPathText(returnPreview)
+                );
+            }
+
+            return {true, false, false, false, builtPathCost};
         }
 
-        rb.pathID = 1;
-
-        if (hasBlockedCellAnywhereOnPath(rb) || !isNextPathCellFree(rb))
-        {
-            // A dynamic obstacle may have occupied the nearest candidate path
-            // after candidate collection. Do not fail the whole decision; try
-            // the next reachable uncovered candidate instead.
-            clearRobotPath(rb);
-            continue;
-        }
-
-        double builtPathCost = pathEnergyCost(rb.path, startDir);
-
-        if (ctx != nullptr)
-        {
-            vector<Cell> returnPreview = traceTempPathOriented(
-                candidate.target,
-                candidate.arrivalDir,
-                rb.base,
-                returnArrivalDir
-            );
-
-            logDecisionPath(
-                *ctx,
-                rb,
-                "coverage_path_built",
-                true,
-                "rank=" + to_string(rank + 1) +
-                " path_cost=" + formatEnergy(builtPathCost) +
-                " arrival_dir=" + to_string((int)candidate.arrivalDir) +
-                " cost_to_base=" + formatEnergy(costToBase) +
-                " return_arrival_dir=" + to_string((int)returnArrivalDir) +
-                " first_step=" + cellText(rb.path[rb.pathID]) +
-                " path=" + compactPathText(rb.path) +
-                " return_path_preview=" + compactPathText(returnPreview)
-            );
-        }
-
-        return {true, false, false, false, builtPathCost};
+        groupStart = groupEnd;
     }
 
     clearRobotPath(rb);
