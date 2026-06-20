@@ -60,7 +60,9 @@ namespace
                 return INF;
 
             total += moveCost;
-            total = quantizeEnergy(total + (double)quarterTurnsBetween(curDir, nextDir) * turnCostTerrain);
+            total = quantizeEnergy(
+                total + (double)quarterTurnsBetween(curDir, nextDir) * turnCostTerrain
+            );
 
             if (total >= INF)
                 return INF;
@@ -123,6 +125,16 @@ namespace
         return count;
     }
 
+    int absInt(int value)
+    {
+        return value < 0 ? -value : value;
+    }
+
+    int manhattanDistance(Cell a, Cell b)
+    {
+        return absInt(a.r - b.r) + absInt(a.c - b.c);
+    }
+
     bool compareCandidateLexicographic(
         const CoverageCandidate &a,
         const CoverageCandidate &b
@@ -139,11 +151,13 @@ namespace
         const CoverageCandidate &b
     ) {
         return a.costFromRobot == b.costFromRobot &&
-               a.islandPriority == b.islandPriority &&
                a.revisitCountOnPath == b.revisitCountOnPath &&
                a.frontierScore == b.frontierScore;
     }
 
+    // Island/pocket cleanup is handled by tryBuildCleanupPath().  The normal
+    // comparator intentionally stays simple so a noisy detector cannot pollute
+    // target selection for the whole map.
     bool compareCandidateByCoveragePolicy(
         const CoverageCandidate &a,
         const CoverageCandidate &b
@@ -151,22 +165,15 @@ namespace
         if (a.costFromRobot != b.costFromRobot)
             return a.costFromRobot < b.costFromRobot;
 
-        if (a.islandPriority != b.islandPriority)
-            return a.islandPriority < b.islandPriority;
-
         if (a.revisitCountOnPath != b.revisitCountOnPath)
             return a.revisitCountOnPath < b.revisitCountOnPath;
 
         if (a.frontierScore != b.frontierScore)
             return a.frontierScore > b.frontierScore;
 
-        // costToBase is intentionally late: feasibility already guarantees that
-        // the robot can return home; this only preserves a better safety margin
-        // when coverage-oriented metrics are otherwise equal.
         if (a.costToBase != b.costToBase)
             return a.costToBase < b.costToBase;
 
-        // Deterministic fallback only; this is not a navigation policy.
         return compareCandidateLexicographic(a, b);
     }
 
@@ -176,9 +183,6 @@ namespace
     ) {
         if (a.costFromRobot != b.costFromRobot)
             return a.costFromRobot < b.costFromRobot;
-
-        if (a.islandPriority != b.islandPriority)
-            return a.islandPriority < b.islandPriority;
 
         if (a.revisitCountOnPath != b.revisitCountOnPath)
             return a.revisitCountOnPath < b.revisitCountOnPath;
@@ -240,8 +244,6 @@ namespace
         PlannerObstacleMode mode,
         HeadingDir *baseArrivalDir = nullptr
     ) {
-        // Use the temp oriented tables so candidate->base feasibility checks do
-        // not destroy the main robot->target trace built by collectCandidates().
         dijkstraOrientedTemp(candidate.target, candidate.arrivalDir, mode, rb.base);
         return bestTempOrientedDistanceTo(rb.base, baseArrivalDir);
     }
@@ -311,6 +313,344 @@ namespace
             " failed_constraint=current_energy_for_path"
         );
     }
+
+    double bestReachableNormalCost(
+        const vector<CoverageCandidate> &candidates
+    ) {
+        if (candidates.empty())
+            return INF;
+
+        // collectCandidates() already sorted by cheap coverage policy and reused
+        // the single robot->all oriented Dijkstra for this decision.  Do not run
+        // target->base Dijkstra here; this value is only a detour gate baseline.
+        return candidates.front().costFromRobot;
+    }
+
+    bool cleanupDetourAllowed(
+        double cleanupCost,
+        double bestNormalCost,
+        bool continuingActiveComponent,
+        uncovered_island::CleanupSource source
+    ) {
+        if (bestNormalCost >= INF)
+            return true;
+
+        double ratio = continuingActiveComponent ? 1.60 : 1.35;
+        double absoluteAllowance = continuingActiveComponent ? 6.0 : 4.0;
+
+        if (source == uncovered_island::CleanupSource::SPLIT)
+            absoluteAllowance += 2.0;
+        else if (source == uncovered_island::CleanupSource::LOCAL_POCKET)
+            ratio = min(ratio, 1.25);
+
+        return cleanupCost <= bestNormalCost * ratio + absoluteAllowance;
+    }
+
+    bool isBetterCleanupChoice(
+        const CoverageCandidate &a,
+        const CoverageCandidate &b
+    ) {
+        if (a.costFromRobot != b.costFromRobot)
+            return a.costFromRobot < b.costFromRobot;
+
+        if (a.revisitCountOnPath != b.revisitCountOnPath)
+            return a.revisitCountOnPath < b.revisitCountOnPath;
+
+        if (a.frontierScore != b.frontierScore)
+            return a.frontierScore > b.frontierScore;
+
+        if (a.costToBase != b.costToBase)
+            return a.costToBase < b.costToBase;
+
+        return compareCandidateLexicographic(a, b);
+    }
+
+    struct CleanupProbe
+    {
+        CoverageCandidate candidate;
+        int componentId = -1;
+        int componentSize = 0;
+        uncovered_island::CleanupSource source = uncovered_island::CleanupSource::LOCAL_POCKET;
+        bool continuingActiveComponent = false;
+    };
+
+    bool isBetterCleanupProbe(
+        const CleanupProbe &a,
+        const CleanupProbe &b
+    ) {
+        if (a.continuingActiveComponent != b.continuingActiveComponent)
+            return a.continuingActiveComponent;
+
+        if (a.candidate.costFromRobot != b.candidate.costFromRobot)
+            return a.candidate.costFromRobot < b.candidate.costFromRobot;
+
+        if (a.componentSize != b.componentSize)
+            return a.componentSize < b.componentSize;
+
+        if (a.candidate.revisitCountOnPath != b.candidate.revisitCountOnPath)
+            return a.candidate.revisitCountOnPath < b.candidate.revisitCountOnPath;
+
+        if (a.candidate.frontierScore != b.candidate.frontierScore)
+            return a.candidate.frontierScore > b.candidate.frontierScore;
+
+        return compareCandidateLexicographic(a.candidate, b.candidate);
+    }
+
+    bool isBetterCleanupComponent(
+        const uncovered_island::CleanupComponentView &a,
+        const uncovered_island::CleanupComponentView &b,
+        Cell robotPos,
+        int activeId
+    ) {
+        bool aActive = activeId >= 0 && a.id == activeId;
+        bool bActive = activeId >= 0 && b.id == activeId;
+
+        if (aActive != bActive)
+            return aActive;
+
+        int da = manhattanDistance(a.sourceCell, robotPos);
+        int db = manhattanDistance(b.sourceCell, robotPos);
+
+        if (da != db)
+            return da < db;
+
+        if (a.size != b.size)
+            return a.size < b.size;
+
+        return a.id < b.id;
+    }
+
+    bool tryBuildCleanupPath(
+        Robot &rb,
+        CoverageContext *ctx,
+        const vector<CoverageCandidate> &normalCandidates,
+        PathBuildResult &result
+    ) {
+        constexpr int MAX_CLEANUP_COMPONENTS_CONSIDERED = 8;
+        constexpr int MAX_CLEANUP_CELLS_CONSIDERED = 24;
+        constexpr int MAX_RETURN_CHECKS_PER_DECISION = 3;
+
+        uncovered_island::pruneStaleComponents(rb.steps);
+
+        vector<uncovered_island::CleanupComponentView> components =
+            uncovered_island::cleanupComponents();
+
+        if (components.empty())
+            return false;
+
+        int activeId = uncovered_island::activeComponentId();
+        double bestNormalCost = bestReachableNormalCost(normalCandidates);
+        HeadingDir startDir = currentHeadingDir(rb);
+
+        sort(
+            components.begin(),
+            components.end(),
+            [&](const uncovered_island::CleanupComponentView &a,
+                const uncovered_island::CleanupComponentView &b)
+            {
+                return isBetterCleanupComponent(a, b, rb.pos, activeId);
+            }
+        );
+
+        vector<CleanupProbe> probes;
+        int componentsSeen = 0;
+        int cellsSeen = 0;
+
+        for (const uncovered_island::CleanupComponentView &component : components)
+        {
+            bool continuingActiveComponent = activeId >= 0 && component.id == activeId;
+
+            if (activeId >= 0 && !continuingActiveComponent)
+                continue;
+
+            if (!continuingActiveComponent && componentsSeen >= MAX_CLEANUP_COMPONENTS_CONSIDERED)
+                break;
+
+            componentsSeen++;
+
+            for (Cell target : component.cells)
+            {
+                if (cellsSeen >= MAX_CLEANUP_CELLS_CONSIDERED)
+                    break;
+
+                if (!uncovered_island::isUncoveredTarget(target))
+                    continue;
+
+                HeadingDir arrivalDir = DIR_NORTH;
+                double cost = bestOrientedDistanceTo(target, &arrivalDir);
+
+                if (cost >= INF)
+                    continue;
+
+                if (!cleanupDetourAllowed(
+                        cost,
+                        bestNormalCost,
+                        continuingActiveComponent,
+                        component.source
+                    ))
+                {
+                    continue;
+                }
+
+                CoverageCandidate candidate;
+                candidate.costFromRobot = cost;
+                candidate.target = target;
+                candidate.arrivalDir = arrivalDir;
+                candidate.islandPriority = uncovered_island::cleanupPriorityForTarget(target);
+                candidate.frontierScore = frontierScore(target);
+                candidate.path = tracePathOriented(
+                    rb.pos,
+                    startDir,
+                    candidate.target,
+                    candidate.arrivalDir
+                );
+                candidate.revisitCountOnPath = revisitCountOnPath(candidate.path);
+
+                CleanupProbe probe;
+                probe.candidate = candidate;
+                probe.componentId = component.id;
+                probe.componentSize = component.size;
+                probe.source = component.source;
+                probe.continuingActiveComponent = continuingActiveComponent;
+                probes.push_back(probe);
+
+                cellsSeen++;
+            }
+        }
+
+        if (probes.empty())
+        {
+            if (activeId >= 0)
+                uncovered_island::releaseActiveComponent();
+
+            return false;
+        }
+
+        sort(probes.begin(), probes.end(), isBetterCleanupProbe);
+
+        bool hasChoice = false;
+        CleanupProbe bestProbe;
+        int returnChecks = 0;
+
+        for (CleanupProbe probe : probes)
+        {
+            if (returnChecks >= MAX_RETURN_CHECKS_PER_DECISION)
+                break;
+
+            returnChecks++;
+
+            probe.candidate.costToBase = estimateTargetToBase(
+                probe.candidate,
+                rb,
+                PlannerObstacleMode::RESPECT_DYNAMIC,
+                &probe.candidate.returnArrivalDir
+            );
+
+            if (!canFullBatteryVisitAndReturn(
+                    rb,
+                    probe.candidate.costFromRobot,
+                    probe.candidate.costToBase
+                ))
+            {
+                continue;
+            }
+
+            if (!canVisitTargetAndReturn(
+                    rb,
+                    probe.candidate.costFromRobot,
+                    probe.candidate.costToBase
+                ))
+            {
+                continue;
+            }
+
+            if (!hasChoice || isBetterCleanupChoice(probe.candidate, bestProbe.candidate))
+            {
+                hasChoice = true;
+                bestProbe = probe;
+            }
+        }
+
+        if (!hasChoice)
+        {
+            if (activeId >= 0)
+                uncovered_island::releaseActiveComponent();
+
+            return false;
+        }
+
+        CoverageCandidate bestChoice = bestProbe.candidate;
+        rb.path = bestChoice.path;
+
+        if ((int)rb.path.size() <= 1)
+        {
+            markCovered(bestChoice.target.r, bestChoice.target.c);
+            clearRobotPath(rb);
+            result = alreadyAtGoalResult(rb);
+            return true;
+        }
+
+        rb.pathID = 1;
+
+        if (hasBlockedCellAnywhereOnPath(rb) || !isNextPathCellFree(rb))
+        {
+            clearRobotPath(rb);
+            uncovered_island::releaseActiveComponent();
+            return false;
+        }
+
+        double builtPathCost = pathEnergyCost(rb.path, startDir);
+        uncovered_island::markComponentSelected(bestProbe.componentId);
+
+        if (ctx != nullptr)
+        {
+            beginDecisionTrace(
+                *ctx,
+                rb,
+                "coverage",
+                bestChoice.target,
+                "local_cleanup_component_fast",
+                (int)normalCandidates.size(),
+                bestChoice.costFromRobot,
+                bestChoice.costToBase
+            );
+
+            vector<Cell> returnPreview = traceTempPathOriented(
+                bestChoice.target,
+                bestChoice.arrivalDir,
+                rb.base,
+                bestChoice.returnArrivalDir
+            );
+
+            logDecisionPath(
+                *ctx,
+                rb,
+                "cleanup_path_built",
+                true,
+                "path_cost=" + formatEnergy(builtPathCost) +
+                " arrival_dir=" + to_string((int)bestChoice.arrivalDir) +
+                " cost_to_base=" + formatEnergy(bestChoice.costToBase) +
+                " return_arrival_dir=" + to_string((int)bestChoice.returnArrivalDir) +
+                " cleanup_component=" + to_string(bestProbe.componentId) +
+                " cleanup_source=" + uncovered_island::cleanupSourceName(bestProbe.source) +
+                " cleanup_component_size=" + to_string(bestProbe.componentSize) +
+                " continuing_active_component=" + boolText(bestProbe.continuingActiveComponent) +
+                " best_normal_cost=" + formatEnergy(bestNormalCost) +
+                " cleanup_probes=" + to_string((int)probes.size()) +
+                " cleanup_return_checks=" + to_string(returnChecks) +
+                " pending_cleanup_components=" + to_string(uncovered_island::pendingCleanupComponentCount()) +
+                " pending_cleanup_cells=" + to_string(uncovered_island::pendingCleanupCellCount()) +
+                " revisit_count_on_path=" + to_string(bestChoice.revisitCountOnPath) +
+                " frontier_score=" + to_string(bestChoice.frontierScore) +
+                " first_step=" + cellText(rb.path[rb.pathID]) +
+                " path=" + compactPathText(rb.path) +
+                " return_path_preview=" + compactPathText(returnPreview)
+            );
+        }
+
+        result = {true, false, false, false, builtPathCost};
+        return true;
+    }
 }
 
 void clearRobotPath(Robot &rb)
@@ -364,8 +704,6 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
         );
     }
 
-    // Arriving with exactly zero energy is still power loss in robot_motion.cpp,
-    // so require strictly more energy than the full path cost.
     if (costToBase >= rb.energy)
     {
         logPathRejectedForEnergy(ctx, rb, "return_path_energy_rejected", costToBase);
@@ -464,6 +802,11 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     vector<CoverageCandidate> candidates =
         collectCandidates(rb, PlannerObstacleMode::RESPECT_DYNAMIC);
 
+    PathBuildResult cleanupResult;
+
+    if (tryBuildCleanupPath(rb, ctx, candidates, cleanupResult))
+        return cleanupResult;
+
     bool foundCurrentEnergyLow = false;
     bool foundMaxEnergyInfeasible = false;
     HeadingDir startDir = currentHeadingDir(rb);
@@ -517,11 +860,7 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
             feasibleGroup.push_back(candidate);
         }
 
-        sort(
-            feasibleGroup.begin(),
-            feasibleGroup.end(),
-            compareCandidateByCoveragePolicy
-        );
+        sort(feasibleGroup.begin(), feasibleGroup.end(), compareCandidateByCoveragePolicy);
 
         for (int rankInGroup = 0; rankInGroup < (int)feasibleGroup.size(); rankInGroup++)
         {
@@ -534,16 +873,13 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                     rb,
                     "coverage",
                     candidate.target,
-                    "nearest_uncovered_island_aware_feasible",
+                    "nearest_uncovered_feasible",
                     (int)candidates.size(),
                     candidate.costFromRobot,
                     candidate.costToBase
                 );
             }
 
-            // collectCandidates() already ran dijkstraOriented() from rb.pos with
-            // this same startDir. candidate->base checks use temp tables, so the
-            // main orientedTrace still describes robot->target and can be reused.
             rb.path = candidate.path;
 
             if ((int)rb.path.size() <= 1)
@@ -557,9 +893,6 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
 
             if (hasBlockedCellAnywhereOnPath(rb) || !isNextPathCellFree(rb))
             {
-                // A dynamic obstacle may have occupied the selected candidate path
-                // after candidate collection. Do not fail the whole decision; try
-                // the next reachable uncovered candidate instead.
                 clearRobotPath(rb);
                 continue;
             }
@@ -586,7 +919,8 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
                     " cost_to_base=" + formatEnergy(candidate.costToBase) +
                     " return_arrival_dir=" + to_string((int)candidate.returnArrivalDir) +
                     " island_priority=" + to_string(candidate.islandPriority) +
-                    " pending_island_cells=" + to_string(uncovered_island::pendingCleanupCellCount()) +
+                    " pending_cleanup_components=" + to_string(uncovered_island::pendingCleanupComponentCount()) +
+                    " pending_cleanup_cells=" + to_string(uncovered_island::pendingCleanupCellCount()) +
                     " revisit_count_on_path=" + to_string(candidate.revisitCountOnPath) +
                     " frontier_score=" + to_string(candidate.frontierScore) +
                     " first_step=" + cellText(rb.path[rb.pathID]) +
@@ -608,10 +942,6 @@ PathBuildResult rebuildPathToNearestUncoveredTarget(Robot &rb, CoverageContext *
     PathBuildResult result;
     result.success = false;
     result.currentEnergyLow = foundCurrentEnergyLow;
-
-    // If a full-battery static route exists, do not classify the mission as
-    // terminally infeasible. The blocker is dynamic/temporary, so recovery logic
-    // should keep listening instead of ending the mission.
     result.energyInfeasible =
         !staticFeasible && !foundCurrentEnergyLow && foundMaxEnergyInfeasible;
 

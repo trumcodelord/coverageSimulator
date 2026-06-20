@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <queue>
+#include <string>
 #include <vector>
 
 namespace uncovered_island
@@ -13,14 +14,23 @@ namespace uncovered_island
     namespace
     {
         constexpr int LOCAL_POCKET_RADIUS = 2;
+        constexpr int INACTIVE_COMPONENT_TTL_STEPS = 250;
+        constexpr int ACTIVE_COMPONENT_TTL_STEPS = 500;
 
-        struct PendingCleanupCell
+        struct CleanupComponent
         {
-            Cell cell = {0, 0};
-            int priority = NO_ISLAND_PRIORITY;
+            int id = -1;
+            CleanupSource source = CleanupSource::LOCAL_POCKET;
+            std::vector<Cell> cells;
+            Cell sourceCell = {0, 0};
+            int createdStep = 0;
+            bool active = true;
         };
 
-        std::vector<PendingCleanupCell> pendingCleanupCells;
+        std::vector<CleanupComponent> cleanupComponentList;
+        int nextComponentId = 1;
+        int activeCleanupComponentId = -1;
+
         int visitedStamp[1001][1001];
         int activeStamp = 1;
 
@@ -45,6 +55,81 @@ namespace uncovered_island
             activeStamp = 1;
         }
 
+        int sourcePriority(CleanupSource source)
+        {
+            if (source == CleanupSource::SPLIT)
+                return 1;
+            if (source == CleanupSource::DEAD_END)
+                return 2;
+            return 3;
+        }
+
+        bool cellInComponent(const CleanupComponent &component, Cell p)
+        {
+            for (Cell cell : component.cells)
+                if (sameCell(cell, p))
+                    return true;
+            return false;
+        }
+
+        bool componentStillHasUncoveredCell(const CleanupComponent &component)
+        {
+            for (Cell p : component.cells)
+                if (isUncoveredTarget(p))
+                    return true;
+            return false;
+        }
+
+        int uncoveredCellCountInComponent(const CleanupComponent &component)
+        {
+            int count = 0;
+
+            for (Cell p : component.cells)
+                if (isUncoveredTarget(p))
+                    count++;
+
+            return count;
+        }
+
+        int hardBoundaryCount(Cell p)
+        {
+            int count = 0;
+
+            for (int k = 1; k <= 4; k++)
+            {
+                Cell n = {p.r + dr[k], p.c + dc[k]};
+
+                if (!inBounds(n.r, n.c))
+                {
+                    count++;
+                    continue;
+                }
+
+                if (isStaticBlocked(n.r, n.c) || !isCoverageTargetCell(n.r, n.c))
+                    count++;
+            }
+
+            return count;
+        }
+
+        int softBoundaryCount(Cell p)
+        {
+            int count = 0;
+
+            for (int k = 1; k <= 4; k++)
+            {
+                Cell n = {p.r + dr[k], p.c + dc[k]};
+
+                if (!inBounds(n.r, n.c))
+                    continue;
+
+                if (isCoverageTargetCell(n.r, n.c) && covered[n.r][n.c])
+                    count++;
+            }
+
+            return count;
+        }
+
         std::vector<Cell> uncoveredNeighbors4(Cell p)
         {
             std::vector<Cell> result;
@@ -65,84 +150,69 @@ namespace uncovered_island
             return (int)uncoveredNeighbors4(p).size();
         }
 
-        int closedBoundaryCount(Cell p)
+        bool isReliableDeadEndCell(Cell p)
         {
-            int count = 0;
+            if (!isUncoveredTarget(p))
+                return false;
 
-            for (int k = 1; k <= 4; k++)
-            {
-                Cell n = {p.r + dr[k], p.c + dc[k]};
-
-                if (!isUncoveredTarget(n))
-                    count++;
-            }
-
-            return count;
+            return uncoveredDegree(p) <= 1 &&
+                   hardBoundaryCount(p) >= 1;
         }
 
-        bool isConstrainedPocketCell(Cell p)
+        bool isReliableLocalPocketCell(Cell p)
         {
             if (!isUncoveredTarget(p))
                 return false;
 
             int degree = uncoveredDegree(p);
-            int closed = closedBoundaryCount(p);
+            int hard = hardBoundaryCount(p);
+            int soft = softBoundaryCount(p);
 
-            // A local pocket/corridor leftover is usually bounded by covered cells,
-            // static obstacles, or the map border on at least two sides. This catches
-            // dead-end/corridor cells that are not necessarily a separate global
-            // uncovered component yet.
-            return degree <= 2 && closed >= 2;
+            // A covered cell is only a soft signal. Require at least one hard
+            // boundary (wall/static obstacle/non-target/border) to avoid turning
+            // every newly-swept corridor into a fake pocket.
+            return degree <= 2 &&
+                   hard >= 1 &&
+                   soft >= 1;
         }
 
-        void pruneStaleCleanupCells()
+        bool componentOverlapsExisting(const std::vector<Cell> &cells)
         {
-            pendingCleanupCells.erase(
-                std::remove_if(
-                    pendingCleanupCells.begin(),
-                    pendingCleanupCells.end(),
-                    [](const PendingCleanupCell &entry)
-                    {
-                        return !isUncoveredTarget(entry.cell);
-                    }
-                ),
-                pendingCleanupCells.end()
-            );
-        }
-
-        int addCleanupCell(Cell p, int priority)
-        {
-            if (!isUncoveredTarget(p))
-                return 0;
-
-            priority = std::max(1, std::min(priority, NO_ISLAND_PRIORITY - 1));
-
-            for (PendingCleanupCell &entry : pendingCleanupCells)
+            for (const CleanupComponent &component : cleanupComponentList)
             {
-                if (sameCell(entry.cell, p))
-                {
-                    entry.priority = std::min(entry.priority, priority);
-                    return 0;
-                }
+                if (!component.active)
+                    continue;
+
+                for (Cell p : cells)
+                    if (cellInComponent(component, p))
+                        return true;
             }
 
-            pendingCleanupCells.push_back({p, priority});
-            return 1;
+            return false;
         }
 
-        int addCleanupComponent(const std::vector<Cell> &component, int priority)
-        {
-            int added = 0;
-
-            if (component.empty() || (int)component.size() > SMALL_ISLAND_LIMIT)
+        int addCleanupComponent(
+            const std::vector<Cell> &cells,
+            CleanupSource source,
+            Cell sourceCell,
+            int currentStep
+        ) {
+            if (cells.empty() || (int)cells.size() > SMALL_ISLAND_LIMIT)
                 return 0;
 
-            priority = std::min(priority, (int)component.size());
+            if (componentOverlapsExisting(cells))
+                return 0;
 
-            for (Cell p : component)
-                added += addCleanupCell(p, priority);
+            CleanupComponent component;
+            component.id = nextComponentId++;
+            component.source = source;
+            component.cells = cells;
+            component.sourceCell = sourceCell;
+            component.createdStep = currentStep;
+            component.active = true;
 
-            return added;
+            cleanupComponentList.push_back(component);
+            return 1;
         }
 
         std::vector<Cell> collectUncoveredComponentLimited(Cell seed, int limit)
@@ -183,7 +253,26 @@ namespace uncovered_island
             return component;
         }
 
-        int detectSplitOrDeadEndComponents(Cell coveredCell)
+        CleanupSource sourceForSmallComponent(const std::vector<Cell> &component)
+        {
+            bool hasDeadEnd = false;
+
+            for (Cell p : component)
+            {
+                if (isReliableDeadEndCell(p))
+                {
+                    hasDeadEnd = true;
+                    break;
+                }
+            }
+
+            if (component.size() == 1 || hasDeadEnd)
+                return CleanupSource::DEAD_END;
+
+            return CleanupSource::SPLIT;
+        }
+
+        int detectSplitOrDeadEndComponents(Cell coveredCell, int currentStep)
         {
             std::vector<Cell> neighbors = uncoveredNeighbors4(coveredCell);
 
@@ -199,13 +288,14 @@ namespace uncovered_island
                 if (visitedStamp[seed.r][seed.c] == activeStamp)
                     continue;
 
-                std::vector<Cell> component = collectUncoveredComponentLimited(
-                    seed,
-                    SMALL_ISLAND_LIMIT + 1
-                );
+                std::vector<Cell> component =
+                    collectUncoveredComponentLimited(seed, SMALL_ISLAND_LIMIT + 1);
 
-                if ((int)component.size() <= SMALL_ISLAND_LIMIT)
-                    added += addCleanupComponent(component, (int)component.size());
+                if (component.empty() || (int)component.size() > SMALL_ISLAND_LIMIT)
+                    continue;
+
+                CleanupSource source = sourceForSmallComponent(component);
+                added += addCleanupComponent(component, source, coveredCell, currentStep);
             }
 
             return added;
@@ -215,7 +305,7 @@ namespace uncovered_island
         {
             std::vector<Cell> cluster;
 
-            if (!isConstrainedPocketCell(seed))
+            if (!isReliableLocalPocketCell(seed) && !isReliableDeadEndCell(seed))
                 return cluster;
 
             std::queue<Cell> q;
@@ -235,10 +325,10 @@ namespace uncovered_island
                 {
                     Cell nxt = {cur.r + dr[k], cur.c + dc[k]};
 
-                    if (!isConstrainedPocketCell(nxt))
+                    if (manhattan(nxt, center) > LOCAL_POCKET_RADIUS)
                         continue;
 
-                    if (manhattan(nxt, center) > LOCAL_POCKET_RADIUS)
+                    if (!isReliableLocalPocketCell(nxt) && !isReliableDeadEndCell(nxt))
                         continue;
 
                     if (visitedStamp[nxt.r][nxt.c] == activeStamp)
@@ -252,7 +342,7 @@ namespace uncovered_island
             return cluster;
         }
 
-        int scanLocalPocketsNear(Cell center)
+        int scanLocalPocketsNear(Cell center, int currentStep)
         {
             nextStamp();
 
@@ -274,7 +364,7 @@ namespace uncovered_island
                     if (visitedStamp[r][c] == activeStamp)
                         continue;
 
-                    if (!isConstrainedPocketCell(seed))
+                    if (!isReliableLocalPocketCell(seed) && !isReliableDeadEndCell(seed))
                         continue;
 
                     std::vector<Cell> cluster = collectLocalPocketCluster(seed, center);
@@ -282,19 +372,37 @@ namespace uncovered_island
                     if (cluster.empty() || (int)cluster.size() > SMALL_ISLAND_LIMIT)
                         continue;
 
-                    int bestDegree = 4;
+                    CleanupSource source = CleanupSource::LOCAL_POCKET;
 
                     for (Cell p : cluster)
-                        bestDegree = std::min(bestDegree, uncoveredDegree(p));
+                    {
+                        if (isReliableDeadEndCell(p))
+                        {
+                            source = CleanupSource::DEAD_END;
+                            break;
+                        }
+                    }
 
-                    // Stronger priority for dead ends; weaker but still useful
-                    // priority for short corridor/pocket leftovers.
-                    int priority = std::max(1, bestDegree + 1);
-                    added += addCleanupComponent(cluster, priority);
+                    added += addCleanupComponent(cluster, source, center, currentStep);
                 }
             }
 
             return added;
+        }
+
+        void compactInactiveComponents()
+        {
+            cleanupComponentList.erase(
+                std::remove_if(
+                    cleanupComponentList.begin(),
+                    cleanupComponentList.end(),
+                    [](const CleanupComponent &component)
+                    {
+                        return !component.active;
+                    }
+                ),
+                cleanupComponentList.end()
+            );
         }
     }
 
@@ -307,14 +415,19 @@ namespace uncovered_island
 
     int cleanupPriorityForTarget(Cell target)
     {
-        pruneStaleCleanupCells();
+        pruneStaleComponents(0);
 
         int best = NO_ISLAND_PRIORITY;
 
-        for (const PendingCleanupCell &entry : pendingCleanupCells)
+        for (const CleanupComponent &component : cleanupComponentList)
         {
-            if (sameCell(entry.cell, target))
-                best = std::min(best, entry.priority);
+            if (!component.active)
+                continue;
+
+            if (!cellInComponent(component, target))
+                continue;
+
+            best = std::min(best, sourcePriority(component.source));
         }
 
         return best;
@@ -322,23 +435,140 @@ namespace uncovered_island
 
     int pendingCleanupCellCount()
     {
-        pruneStaleCleanupCells();
-        return (int)pendingCleanupCells.size();
+        pruneStaleComponents(0);
+
+        int count = 0;
+
+        for (const CleanupComponent &component : cleanupComponentList)
+        {
+            if (!component.active)
+                continue;
+
+            count += uncoveredCellCountInComponent(component);
+        }
+
+        return count;
     }
 
-    int notifyCoveredCell(Cell coveredCell)
+    int pendingCleanupComponentCount()
     {
-        pruneStaleCleanupCells();
+        pruneStaleComponents(0);
+
+        int count = 0;
+
+        for (const CleanupComponent &component : cleanupComponentList)
+            if (component.active)
+                count++;
+
+        return count;
+    }
+
+    std::vector<CleanupComponentView> cleanupComponents()
+    {
+        pruneStaleComponents(0);
+
+        std::vector<CleanupComponentView> result;
+
+        for (const CleanupComponent &component : cleanupComponentList)
+        {
+            if (!component.active)
+                continue;
+
+            CleanupComponentView view;
+            view.id = component.id;
+            view.source = component.source;
+            view.size = uncoveredCellCountInComponent(component);
+            view.sourceCell = component.sourceCell;
+            view.createdStep = component.createdStep;
+            view.active = component.id == activeCleanupComponentId;
+
+            for (Cell p : component.cells)
+                if (isUncoveredTarget(p))
+                    view.cells.push_back(p);
+
+            if (!view.cells.empty())
+                result.push_back(view);
+        }
+
+        return result;
+    }
+
+    int activeComponentId()
+    {
+        return activeCleanupComponentId;
+    }
+
+    void markComponentSelected(int componentId)
+    {
+        activeCleanupComponentId = componentId;
+    }
+
+    void releaseActiveComponent()
+    {
+        activeCleanupComponentId = -1;
+    }
+
+    std::string cleanupSourceName(CleanupSource source)
+    {
+        if (source == CleanupSource::SPLIT)
+            return "split";
+        if (source == CleanupSource::DEAD_END)
+            return "dead_end";
+        return "local_pocket";
+    }
+
+    int notifyCoveredCell(Cell coveredCell, int currentStep)
+    {
+        pruneStaleComponents(currentStep);
 
         int added = 0;
-        added += detectSplitOrDeadEndComponents(coveredCell);
-        added += scanLocalPocketsNear(coveredCell);
+        added += detectSplitOrDeadEndComponents(coveredCell, currentStep);
+        added += scanLocalPocketsNear(coveredCell, currentStep);
 
         return added;
     }
 
+    void pruneStaleComponents(int currentStep)
+    {
+        for (CleanupComponent &component : cleanupComponentList)
+        {
+            if (!component.active)
+                continue;
+
+            if (!componentStillHasUncoveredCell(component))
+            {
+                component.active = false;
+
+                if (component.id == activeCleanupComponentId)
+                    activeCleanupComponentId = -1;
+
+                continue;
+            }
+
+            if (currentStep <= 0)
+                continue;
+
+            int age = currentStep - component.createdStep;
+            int ttl = component.id == activeCleanupComponentId
+                ? ACTIVE_COMPONENT_TTL_STEPS
+                : INACTIVE_COMPONENT_TTL_STEPS;
+
+            if (age > ttl)
+            {
+                component.active = false;
+
+                if (component.id == activeCleanupComponentId)
+                    activeCleanupComponentId = -1;
+            }
+        }
+
+        compactInactiveComponents();
+    }
+
     void clearPendingCleanup()
     {
-        pendingCleanupCells.clear();
+        cleanupComponentList.clear();
+        activeCleanupComponentId = -1;
+        nextComponentId = 1;
     }
 }

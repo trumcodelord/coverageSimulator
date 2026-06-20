@@ -136,13 +136,10 @@ namespace
             " energy_after=" + formatEnergy(rb.energy) +
             " pos=" + cellText(rb.pos)
         );
-
     }
 
-    RobotMoveResult commitPendingMove(
-        Robot &rb,
-        CoverageContext &ctx
-    ) {
+    RobotMoveResult commitPendingMove(Robot &rb, CoverageContext &ctx)
+    {
         RobotMoveResult result;
 
         PendingRobotMove move = ctx.pendingMove;
@@ -243,24 +240,26 @@ namespace
 
         if (move.enteredUncoveredCell)
         {
-            int islandCleanupCells = uncovered_island::notifyCoveredCell(rb.pos);
+            int newCleanupComponents =
+                uncovered_island::notifyCoveredCell(rb.pos, rb.steps);
 
-            if (islandCleanupCells > 0)
+            if (newCleanupComponents > 0)
             {
                 pushHUDEvent(
-                    "[ISLAND] Phat hien cum chua phu nho, uu tien don cuc bo."
+                    "[CLEANUP] Phat hien cum nho can don cuc bo."
                 );
 
                 logRobotEvent(
                     "INFO",
                     "COVERAGE",
-                    "uncovered_island_detected",
-                    "Covering this cell exposed a small uncovered island or local pocket cleanup component.",
+                    "cleanup_component_detected",
+                    "Covering this cell exposed one or more small cleanup components.",
                     rb,
                     ctx.mode,
                     "decision_id=" + std::to_string(ctx.activeDecisionId) +
                     " pos=" + cellText(rb.pos) +
-                    " new_cleanup_cells=" + std::to_string(islandCleanupCells) +
+                    " new_cleanup_components=" + std::to_string(newCleanupComponents) +
+                    " pending_cleanup_components=" + std::to_string(uncovered_island::pendingCleanupComponentCount()) +
                     " pending_cleanup_cells=" + std::to_string(uncovered_island::pendingCleanupCellCount())
                 );
             }
@@ -285,7 +284,6 @@ namespace
             " reward_new_cell=" + std::to_string(rewardNewCell) +
             " penalty_revisit=" + std::to_string(penaltyRevisit)
         );
-
 
         return result;
     }
@@ -345,10 +343,8 @@ double pendingRobotVisualAngleDeg(const Robot &rb, const CoverageContext &ctx)
     return ctx.pendingMove.targetAngleDeg;
 }
 
-RobotMoveResult advancePendingRobotMove(
-    Robot &rb,
-    CoverageContext &ctx
-) {
+RobotMoveResult advancePendingRobotMove(Robot &rb, CoverageContext &ctx)
+{
     RobotMoveResult result;
 
     if (!ctx.pendingMove.active)
