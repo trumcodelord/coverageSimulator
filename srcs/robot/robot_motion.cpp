@@ -7,7 +7,6 @@
 #include "grid.h"
 #include "motion_geometry.h"
 #include "opencv.h"
-#include "uncovered_island.h"
 
 #include <algorithm>
 #include <string>
@@ -136,10 +135,13 @@ namespace
             " energy_after=" + formatEnergy(rb.energy) +
             " pos=" + cellText(rb.pos)
         );
+
     }
 
-    RobotMoveResult commitPendingMove(Robot &rb, CoverageContext &ctx)
-    {
+    RobotMoveResult commitPendingMove(
+        Robot &rb,
+        CoverageContext &ctx
+    ) {
         RobotMoveResult result;
 
         PendingRobotMove move = ctx.pendingMove;
@@ -238,33 +240,6 @@ namespace
 
         markCovered(rb.pos.r, rb.pos.c);
 
-        if (move.enteredUncoveredCell)
-        {
-            int newCleanupComponents =
-                uncovered_island::notifyCoveredCell(rb.pos, rb.steps);
-
-            if (newCleanupComponents > 0)
-            {
-                pushHUDEvent(
-                    "[CLEANUP] Phat hien cum nho can don cuc bo."
-                );
-
-                logRobotEvent(
-                    "INFO",
-                    "COVERAGE",
-                    "cleanup_component_detected",
-                    "Covering this cell exposed one or more small cleanup components.",
-                    rb,
-                    ctx.mode,
-                    "decision_id=" + std::to_string(ctx.activeDecisionId) +
-                    " pos=" + cellText(rb.pos) +
-                    " new_cleanup_components=" + std::to_string(newCleanupComponents) +
-                    " pending_cleanup_components=" + std::to_string(uncovered_island::pendingCleanupComponentCount()) +
-                    " pending_cleanup_cells=" + std::to_string(uncovered_island::pendingCleanupCellCount())
-                );
-            }
-        }
-
         if (shouldOpportunisticallyRecharge(rb, ctx))
             opportunisticRechargeAtBase(rb, ctx);
 
@@ -284,6 +259,7 @@ namespace
             " reward_new_cell=" + std::to_string(rewardNewCell) +
             " penalty_revisit=" + std::to_string(penaltyRevisit)
         );
+
 
         return result;
     }
@@ -343,8 +319,10 @@ double pendingRobotVisualAngleDeg(const Robot &rb, const CoverageContext &ctx)
     return ctx.pendingMove.targetAngleDeg;
 }
 
-RobotMoveResult advancePendingRobotMove(Robot &rb, CoverageContext &ctx)
-{
+RobotMoveResult advancePendingRobotMove(
+    Robot &rb,
+    CoverageContext &ctx
+) {
     RobotMoveResult result;
 
     if (!ctx.pendingMove.active)
