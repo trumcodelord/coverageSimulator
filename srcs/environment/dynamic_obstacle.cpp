@@ -10,6 +10,9 @@
 #include <vector>
 #include <atomic>
 #include <random>
+#include <algorithm>
+#include <cstdlib>
+#include <string>
 
 using namespace std;
 
@@ -33,8 +36,28 @@ static bool manualVehicleControlEnabled = false;
 static int manualVehicleControlIndex = -1;
 static const int MANUAL_RELEASE_WAIT_TICKS = 45;
 
+static const unsigned int DEFAULT_SIM_SEED = 20260621u;
+static const unsigned int MANUAL_VEHICLE_SEED_OFFSET = 303u;
+
+static unsigned int loadSimulationSeed()
+{
+    const char *raw = std::getenv("SIM_SEED");
+
+    if (raw == nullptr || raw[0] == '\0')
+        return DEFAULT_SIM_SEED;
+
+    try
+    {
+        return (unsigned int)std::stoul(std::string(raw));
+    }
+    catch (...)
+    {
+        return DEFAULT_SIM_SEED;
+    }
+}
+
 static std::mt19937 manualVehicleRng(
-    (unsigned)std::chrono::steady_clock::now().time_since_epoch().count()
+    loadSimulationSeed() + MANUAL_VEHICLE_SEED_OFFSET
 );
 
 static std::vector<Cell> dirtyDynamicCells;
@@ -132,6 +155,47 @@ static Cell oneStepAheadByVelocity(const DynamicObstacle &obs)
     else if (obs.vy > 0.0f) q.c += 1;
     else if (obs.vy < 0.0f) q.c -= 1;
     return q;
+}
+
+static float currentObstacleSpeed(const DynamicObstacle &obs)
+{
+    return std::max(std::fabs(obs.vx), std::fabs(obs.vy));
+}
+
+static int movementTicksForCurrentVelocity(const DynamicObstacle &obs)
+{
+    float speed = currentObstacleSpeed(obs);
+    if (speed <= 0.0f)
+        return 0;
+
+    int ticks = (int)std::ceil(1.0f / speed);
+    return std::max(1, ticks);
+}
+
+static void snapObstacleToLogicalCellCenter(DynamicObstacle &obs)
+{
+    obs.x = (float)obs.pos.r;
+    obs.y = (float)obs.pos.c;
+}
+
+static void moveVisualTowardLogicalCellCenter(DynamicObstacle &obs)
+{
+    float targetX = (float)obs.pos.r;
+    float targetY = (float)obs.pos.c;
+    float dx = targetX - obs.x;
+    float dy = targetY - obs.y;
+    float dist = std::sqrt(dx * dx + dy * dy);
+
+    float speed = currentObstacleSpeed(obs);
+    if (speed <= 0.0f || dist <= speed || dist < 0.001f)
+    {
+        obs.x = targetX;
+        obs.y = targetY;
+        return;
+    }
+
+    obs.x += speed * dx / dist;
+    obs.y += speed * dy / dist;
 }
 
 static bool wouldThreatenRobot(const DynamicObstacle &obs, float nx, float ny)
@@ -267,23 +331,73 @@ static void stopObstacleMovement(DynamicObstacle &obs)
 {
     obs.vx = 0.0f;
     obs.vy = 0.0f;
+    obs.moveTick = 0;
+
+    // x/y are render coordinates only.  When an obstacle yields or is blocked,
+    // make the rendered body stand exactly at the center of the logical cell.
+    snapObstacleToLogicalCellCenter(obs);
     reserveCell(obs.pos);
 }
 
-static void moveStraightWithReservation(DynamicObstacle &obs)
+static void advanceActiveGridMove(DynamicObstacle &obs)
 {
-    if (obs.vx == 0.0f && obs.vy == 0.0f)
+    if (obs.moveTick <= 0)
+        return;
+
+    moveVisualTowardLogicalCellCenter(obs);
+    obs.moveTick--;
+
+    if (obs.moveTick <= 0)
     {
+        snapObstacleToLogicalCellCenter(obs);
+        obs.vx = 0.0f;
+        obs.vy = 0.0f;
+    }
+
+    reserveCell(obs.pos);
+}
+
+static void startCommittedGridMove(DynamicObstacle &obs, Cell next)
+{
+    Cell from = obs.pos;
+
+    // Start every grid step from the center of the previous logical cell.  The
+    // renderer then interpolates x/y toward the new logical cell center.
+    obs.x = (float)from.r;
+    obs.y = (float)from.c;
+
+    obs.pos = next;
+    obs.moveTick = movementTicksForCurrentVelocity(obs);
+
+    if (obs.moveTick <= 0)
+    {
+        snapObstacleToLogicalCellCenter(obs);
         reserveCell(obs.pos);
         return;
     }
 
-    float nx = obs.x + obs.vx;
-    float ny = obs.y + obs.vy;
-    Cell next = roundedCell(nx, ny);
+    advanceActiveGridMove(obs);
+}
 
-    if (wouldThreatenRobot(obs, nx, ny) ||
-        !isLineFree(obs.x, obs.y, nx, ny) ||
+static void moveStraightWithReservation(DynamicObstacle &obs)
+{
+    if (obs.moveTick > 0)
+    {
+        advanceActiveGridMove(obs);
+        return;
+    }
+
+    if (obs.vx == 0.0f && obs.vy == 0.0f)
+    {
+        snapObstacleToLogicalCellCenter(obs);
+        reserveCell(obs.pos);
+        return;
+    }
+
+    Cell next = oneStepAheadByVelocity(obs);
+
+    if (wouldThreatenRobot(obs, (float)next.r, (float)next.c) ||
+        !isLineFree((float)obs.pos.r, (float)obs.pos.c, (float)next.r, (float)next.c) ||
         isForbiddenDynamicObstacleCell(next.r, next.c) ||
         occupiedByAnotherObstacle(obs, next) ||
         !canReserveCell(next))
@@ -292,10 +406,7 @@ static void moveStraightWithReservation(DynamicObstacle &obs)
         return;
     }
 
-    obs.x = nx;
-    obs.y = ny;
-    obs.pos = next;
-    reserveCell(obs.pos);
+    startCommittedGridMove(obs, next);
 }
 
 static std::vector<Cell> collectCurrentObstacleCellsNoLock()
@@ -377,10 +488,10 @@ static bool occupiedByOtherObstacleNoLock(int selfIndex, Cell p)
 
 static void freezeManualVehicleNoLock(DynamicObstacle &obs)
 {
-    obs.x = (float)obs.pos.r;
-    obs.y = (float)obs.pos.c;
+    snapObstacleToLogicalCellCenter(obs);
     obs.vx = 0.0f;
     obs.vy = 0.0f;
+    obs.moveTick = 0;
     obs.state = VEHICLE_WAIT;
     obs.stateTick = 0;
     obs.waitTick = MANUAL_RELEASE_WAIT_TICKS;
@@ -503,6 +614,13 @@ static void updateAllObstaclesSafely()
             stopObstacleMovement(obs);
             continue;
         }
+
+        if (obs.moveTick > 0)
+        {
+            moveStraightWithReservation(obs);
+            continue;
+        }
+
         updateBehavior(obs);
         moveStraightWithReservation(obs);
     }
@@ -533,6 +651,15 @@ void initDynamicObstacle()
     robotAvoidanceEnabled = inBounds(start.r, start.c);
     clearReservationGrids();
     currentDynamicBlockedCells.clear();
+
+    for (DynamicObstacle &obs : obstacles)
+    {
+        obs.vx = 0.0f;
+        obs.vy = 0.0f;
+        obs.moveTick = 0;
+        snapObstacleToLogicalCellCenter(obs);
+    }
+
     for (int i = 1; i <= rows; i++)
         for (int j = 1; j <= cols; j++)
             dynamicBlocked[i][j] = false;

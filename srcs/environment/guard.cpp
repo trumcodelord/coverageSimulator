@@ -5,6 +5,8 @@
 #include <vector>
 #include <cmath>
 #include <cstdlib>
+#include <random>
+#include <string>
 
 using namespace std;
 
@@ -13,8 +15,38 @@ static const int GUARD_WAIT_CENTER_MIN = 45;
 static const int GUARD_WAIT_CENTER_MAX = 90;
 static const int GUARD_MAX_RADIUS = 2;
 
-// Speed is measured in cell/frame. The dynamic obstacle loop runs at ~30 FPS.
+// Speed is measured in cell/frame. The dynamic obstacle layer animates the
+// obstacle from one cell center to the next using this speed.
 static const float GUARD_SPEED = 0.02f;
+
+static const unsigned int DEFAULT_SIM_SEED = 20260621u;
+static const unsigned int GUARD_SEED_OFFSET = 101u;
+
+static unsigned int loadSimulationSeed()
+{
+    const char *raw = std::getenv("SIM_SEED");
+
+    if (raw == nullptr || raw[0] == '\0')
+        return DEFAULT_SIM_SEED;
+
+    try
+    {
+        return (unsigned int)std::stoul(std::string(raw));
+    }
+    catch (...)
+    {
+        return DEFAULT_SIM_SEED;
+    }
+}
+
+static mt19937 guardRng(loadSimulationSeed() + GUARD_SEED_OFFSET);
+
+static int randomIntInclusive(int low, int high)
+{
+    if (high < low) return low;
+    uniform_int_distribution<int> dist(low, high);
+    return dist(guardRng);
+}
 
 static Cell nextCell(Cell p, int dir)
 {
@@ -63,7 +95,7 @@ static int chooseOutDir(DynamicObstacle &obs)
 
     if (dirs.empty()) return -1;
 
-    return dirs[rand() % dirs.size()];
+    return dirs[randomIntInclusive(0, (int)dirs.size() - 1)];
 }
 
 static void setMoveVelocity(DynamicObstacle &obs, int dir)
@@ -92,6 +124,8 @@ void updateGuardBehavior(DynamicObstacle &obs)
 
     if (obs.state == GUARD_WAIT_CENTER)
     {
+        obs.x = (float)obs.pos.r;
+        obs.y = (float)obs.pos.c;
         obs.stateTick++;
 
         if (obs.stateTick >= obs.waitTick)
