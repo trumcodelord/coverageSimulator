@@ -1,83 +1,130 @@
-# Coverage Simulator
+# coverageSimulator
 
-Mô phỏng **coverage path planning** cho robot trên bản đồ dạng lưới, có vật cản tĩnh, vật cản động, ràng buộc năng lượng, logic quay về base, recharge và mission outcome theo hướng **mission-aware autonomy**.
+Mô phỏng robot bao phủ bản đồ lưới có ràng buộc năng lượng, chi phí quay, cơ chế quay về căn cứ, sạc lại và vật cản động.
 
-Đây là đồ án tốt nghiệp cử nhân tại Đại học Bách Khoa Hà Nội.
-
----
-
-## 1. Mục tiêu của project
-
-Project này không chỉ mô phỏng robot đi qua mọi ô trống trên bản đồ.
-
-Mục tiêu chính là xây dựng một hệ thống mô phỏng robot trinh sát tự trị trong môi trường có ràng buộc, nơi robot phải cân bằng giữa:
-
-```text
-coverage value
-survivability
-recoverability
-energy constraint
-safe return
-mission outcome
-```
-
-Robot không được thiết kế để “không bao giờ thất bại”. Robot được thiết kế để nếu thất bại thì thất bại có kiểm soát, giữ lại nhiều giá trị nhiệm vụ nhất có thể.
-
-```text
-Làm nhiệm vụ.
-Tôn trọng ràng buộc.
-Bảo toàn tương lai.
-```
+Repo này là phần code/simulator của đồ án tốt nghiệp cử nhân ngành Khoa học máy tính. Trọng tâm của project là mô hình hóa bài toán, thiết kế thuật toán lập kế hoạch, mô phỏng và đánh giá hành vi của robot trong các kịch bản đại diện. Project không nhằm chế tạo robot thật, thiết kế phần cứng dò mìn, xử lý cảm biến ngoài thực địa hoặc mô phỏng đầy đủ động lực học cơ khí.
 
 ---
 
-## 2. Bối cảnh mô phỏng
+## 1. Mục tiêu
 
-Narrative hiện tại của project:
-
-```text
-Robot = autonomous reconnaissance robot
-Map = khu vực cần khảo sát / trinh sát
-Base = command station / recharge station
-Dynamic obstacles = allied patrols, vehicles, moving operational hazards
-Coverage = thu thập dữ liệu khu vực
-Return-to-base = xác nhận nhiệm vụ hoàn tất và phục hồi robot
-```
-
-Trong hệ thống này:
+Hệ thống mô phỏng một robot tự hành thực hiện nhiệm vụ bao phủ trên bản đồ lưới. Robot phải xử lý đồng thời nhiều ràng buộc:
 
 ```text
-coverage complete != mission complete
+- bao phủ các ô hợp lệ trên bản đồ;
+- tránh vật cản tĩnh;
+- phản ứng với vật cản động;
+- tính chi phí địa hình;
+- tính chi phí quay theo hướng hiện tại;
+- kiểm tra năng lượng trước khi chọn mục tiêu;
+- quay về căn cứ khi cần;
+- sạc lại tại căn cứ;
+- phân biệt trạng thái kết thúc nhiệm vụ.
 ```
 
-Một nhiệm vụ chỉ được xem là thành công hoàn toàn khi robot đã phủ xong bản đồ **và quay về base an toàn**.
+Một nhiệm vụ không chỉ được đánh giá bằng tỷ lệ bao phủ. Hệ thống còn xét robot có quay về căn cứ được hay không, đã tiêu thụ bao nhiêu năng lượng, phải quay về/sạc bao nhiêu lần và kết thúc ở trạng thái nào.
 
 ---
 
-## 3. Các chức năng chính
+## 2. Phạm vi mô phỏng
 
-- Coverage trên grid map.
-- Một robot duy nhất.
-- Vật cản tĩnh.
-- Vật cản động dạng guard/patrol và vehicle/convoy.
-- Planner dùng Dijkstra với unit-cost.
-- Chọn ô chưa phủ gần nhất làm target.
-- Quản lý năng lượng theo từng bước di chuyển.
-- Ước lượng chi phí quay về base bằng Dijkstra.
-- Tự quay về base khi năng lượng thấp.
-- Sạc lại khi về base.
-- Né vật cản động.
-- Replan khi đường bị chặn.
-- HOLD_SAFE khi môi trường không an toàn kéo dài.
-- Tactical yield khi đường về bị nghẽn.
-- POWER_SAVE khi không thể hoàn thành nhiệm vụ tuyệt đối nhưng vẫn cần preserve.
-- WAIT_FOR_COMMAND / FINAL_PUSH để mô phỏng directive trong tình huống critical.
-- Hiển thị bằng OpenCV với HUD.
-- Ghi log thống kê coverage.
+Môi trường được biểu diễn bằng bản đồ lưới hai chiều. Mỗi ô có thể là ô hợp lệ, vật cản tĩnh, ô có chi phí địa hình riêng hoặc ô đang bị vật cản động chiếm tại thời điểm xét.
+
+Trong phạm vi đồ án:
+
+```text
+Robot       = robot mô phỏng trên bản đồ lưới
+Base        = ô xuất phát, nơi robot quay về để sạc hoặc kết thúc nhiệm vụ
+Coverage    = ô hợp lệ đã được robot đi qua trong mô hình
+Obstacle    = ô không thể đi qua hoặc tạm thời không an toàn
+Energy      = chi phí chuẩn hóa dùng trong lập kế hoạch và thống kê
+```
+
+Các giả định này giúp tập trung vào phần thuật toán và mô phỏng. Những bài toán như cảm biến dò mìn, định vị ngoài thực địa, điều khiển motor, cơ khí robot hoặc xây dựng bản đồ trực tuyến không thuộc trọng tâm của repo này.
 
 ---
 
-## 4. State machine của robot
+## 3. Chức năng chính
+
+- Đọc bản đồ lưới từ file input trong thư mục `tests/`.
+- Mô phỏng một robot duy nhất.
+- Hỗ trợ vật cản tĩnh.
+- Hỗ trợ vật cản động dạng `Guard` và `Vehicle`.
+- Lập kế hoạch bằng Dijkstra có hướng trên trạng thái gồm vị trí và hướng.
+- Tính chi phí di chuyển theo ô đi vào.
+- Tính chi phí quay theo số lần quay 90 độ.
+- Hỗ trợ mô hình toàn hướng lý tưởng thông qua cấu hình `metric_h`, trong đó chi phí quay được bỏ qua.
+- Chọn mục tiêu chưa bao phủ theo chi phí đi tới, nhưng chỉ chấp nhận nếu còn đủ năng lượng để quay về căn cứ.
+- Áp dụng quỹ dự phòng quay về có điều kiện theo sự tồn tại của vật cản động.
+- Tự quay về căn cứ khi năng lượng không còn phù hợp để tiếp tục bao phủ.
+- Sạc lại khi về căn cứ.
+- Lập kế hoạch lại khi đường đi bị chặn.
+- Chờ, nhường đường hoặc tìm đường vòng khi vật cản động ảnh hưởng tới đường về.
+- Ghi log hành vi và thống kê benchmark.
+- Hiển thị mô phỏng bằng OpenCV.
+
+---
+
+## 4. Mô hình năng lượng
+
+Hệ thống tách năng lượng thành hai phần chính:
+
+```text
+movement energy = năng lượng di chuyển giữa các ô kề cạnh
+turn energy     = năng lượng đổi hướng trước khi đi sang ô tiếp theo
+```
+
+Với mô hình mặc định, một lần quay 90 độ tại ô hiện tại có chi phí bằng một nửa chi phí địa hình của ô đó. Nếu robot quay 180 độ, chi phí quay tương ứng bằng hai lần quay 90 độ.
+
+Trong cấu hình toàn hướng lý tưởng (`metric_h`), chi phí quay được đặt bằng 0. Cấu hình này dùng làm mô hình đối chứng để đánh giá tác động của việc bỏ qua chi phí quay ở mức lập kế hoạch.
+
+---
+
+## 5. Chính sách quay về căn cứ
+
+Tại mỗi lần đánh giá mục tiêu hoặc đánh giá trạng thái năng lượng, hệ thống ước lượng chi phí quay về căn cứ bằng Dijkstra có hướng.
+
+Với một mục tiêu ứng viên `g`, hệ thống xét:
+
+```text
+cost_to_target = chi phí từ robot tới mục tiêu g
+cost_to_base   = chi phí từ mục tiêu g quay về căn cứ
+return_margin  = quỹ dự phòng quay về
+```
+
+Mục tiêu chỉ được chấp nhận nếu:
+
+```text
+energy >= cost_to_target + cost_to_base + return_margin
+```
+
+Chính sách `return_margin` trong phiên bản hiện tại là chính sách có điều kiện:
+
+```text
+Nếu kịch bản không có vật cản động:
+    return_margin = 0
+
+Nếu kịch bản có vật cản động:
+    return_margin = max(MIN_RETURN_MARGIN, proportional_return_margin)
+```
+
+Trong đó:
+
+```text
+MIN_RETURN_MARGIN = 15
+proportional_return_margin ≈ 25% * cost_to_base
+```
+
+Ý nghĩa của chính sách này:
+
+- Trong bản đồ tĩnh, đường về được đánh giá trên bản đồ đã biết. Robot chỉ cần đủ năng lượng để đi tới mục tiêu và quay về căn cứ.
+- Trong kịch bản có vật cản động, đường về có thể phát sinh chi phí do chờ, đi vòng hoặc lập kế hoạch lại. Khi đó hệ thống giữ thêm quỹ dự phòng để giảm rủi ro robot tiêu hết năng lượng cần thiết cho đường về.
+
+Nếu robot về tới căn cứ với đúng 0 năng lượng, trạng thái này vẫn được xem là quay về thành công vì robot đã tới điểm sạc hoặc điểm kết thúc nhiệm vụ.
+
+---
+
+## 6. State machine
 
 Controller chính nằm trong:
 
@@ -85,233 +132,87 @@ Controller chính nằm trong:
 srcs/robot/coverage.cpp
 ```
 
-Sau refactor, file này chỉ còn vai trò orchestration: khởi tạo robot, chạy tick loop, render frame và gọi các module xử lý mission logic.
-
-Các state chính:
-
-```text
-NORMAL
-ALERT
-HOLD_SAFE
-RETURN_TO_BASE
-RECHARGING
-POWER_SAVE
-WAIT_FOR_COMMAND
-FINAL_PUSH
-```
+Các trạng thái chính:
 
 | State | Ý nghĩa |
 |---|---|
-| `NORMAL` | Robot coverage bình thường |
-| `ALERT` | Có vật cản động gần robot hoặc active path bị chặn |
-| `HOLD_SAFE` | Robot dừng an toàn và thử recover/replan định kỳ |
-| `RETURN_TO_BASE` | Robot quay về base vì pin thấp hoặc coverage đã hoàn tất |
-| `RECHARGING` | Robot đang sạc tại base |
-| `POWER_SAVE` | Robot dừng để bảo toàn năng lượng/dữ liệu khi không thể return an toàn |
-| `WAIT_FOR_COMMAND` | Tình huống critical, cần directive |
-| `FINAL_PUSH` | Heroic mode: tiếp tục coverage khi preserve không được chọn |
+| `NORMAL` | Robot đang bao phủ bình thường |
+| `ALERT` | Có nguy cơ từ vật cản động hoặc đường hiện tại không còn an toàn |
+| `HOLD_SAFE` | Robot tạm dừng an toàn và thử phục hồi/lập kế hoạch lại |
+| `RETURN_TO_BASE` | Robot quay về căn cứ |
+| `RECHARGING` | Robot đang sạc tại căn cứ |
+| `POWER_SAVE` | Robot dừng để bảo toàn trạng thái khi không thể tiếp tục an toàn |
+| `WAIT_FOR_COMMAND` | Trạng thái chờ chỉ thị trong tình huống tới hạn |
+| `FINAL_PUSH` | Trạng thái tiếp tục có chủ đích khi không ưu tiên bảo toàn |
 
-Transition contract mong muốn:
+Luồng trạng thái thường gặp:
+
+```text
+NORMAL
+  -> RETURN_TO_BASE
+  -> RECHARGING
+  -> NORMAL
+```
+
+Khi có vật cản động:
 
 ```text
 NORMAL
   -> ALERT
-  -> RETURN_TO_BASE
+  -> HOLD_SAFE / RETURN_TO_BASE
+```
 
-ALERT
-  -> NORMAL
-  -> HOLD_SAFE
-  -> RETURN_TO_BASE
+Khi đường về bị ảnh hưởng:
 
-HOLD_SAFE
-  -> ALERT
-  -> RETURN_TO_BASE
-
+```text
 RETURN_TO_BASE
-  -> RECHARGING
-  -> WAIT_FOR_COMMAND
-  -> POWER_SAVE
-
-RECHARGING
-  -> NORMAL
-
-WAIT_FOR_COMMAND
-  -> POWER_SAVE
-  -> FINAL_PUSH
-
-POWER_SAVE
-  -> terminal
-
-FINAL_PUSH
-  -> terminal strategic
+  -> wait / replan
+  -> tactical yield
+  -> detour
+  -> WAIT_FOR_COMMAND / POWER_SAVE
 ```
 
 ---
 
-## 5. Mission outcome
+## 7. Mission outcome
 
-Project phân biệt coverage result và mission result.
-
-```text
-MISSION_SUCCESS
-MISSION_PARTIAL_RETURNED
-MISSION_PARTIAL_PRESERVED
-MISSION_FAILED
-```
+Hệ thống phân biệt kết quả bao phủ và kết quả nhiệm vụ.
 
 | Outcome | Ý nghĩa |
 |---|---|
-| `MISSION_SUCCESS` | Coverage complete và robot đã quay về base |
-| `MISSION_PARTIAL_RETURNED` | Robot quay về được nhưng coverage chưa hoàn tất |
-| `MISSION_PARTIAL_PRESERVED` | Robot không đạt success tuyệt đối nhưng preserve được mission value / trạng thái an toàn |
-| `MISSION_FAILED` | Robot mất khả năng hoàn thành hoặc preserve giá trị nhiệm vụ |
+| `MISSION_SUCCESS` | Robot bao phủ xong và đã quay về căn cứ |
+| `MISSION_PARTIAL_RETURNED` | Robot chưa bao phủ hết nhưng đã quay về căn cứ |
+| `MISSION_PARTIAL_PRESERVED` | Robot chưa hoàn tất nhưng dừng ở trạng thái bảo toàn |
+| `MISSION_FAILED` | Robot không còn khả năng hoàn thành hoặc bảo toàn nhiệm vụ theo chính sách hiện tại |
 
-Hiện hệ thống ưu tiên triết lý:
-
-```text
-preserve > heroic
-```
-
-Heroic behavior chỉ nên dùng khi coverage chưa hoàn tất, robot không còn khả năng return an toàn và hệ thống được cấp directive tương ứng.
-
-Nếu robot còn khả năng trở về, robot không nên chọn tự sát anh dũng.
+Điểm quan trọng: coverage cao không tự động đồng nghĩa với nhiệm vụ thành công đầy đủ. Với hệ thống này, một nhiệm vụ thành công đầy đủ cần thỏa cả hai điều kiện: bao phủ xong và quay về căn cứ.
 
 ---
 
-## 6. Chính sách năng lượng
+## 8. Vật cản động
 
-Robot không dùng một ngưỡng phần trăm pin cố định. Thay vào đó, robot ước lượng chi phí quay về base tại vị trí hiện tại:
+Vật cản động đại diện cho các tác nhân chuyển động trong môi trường mô phỏng.
 
-```cpp
-costToBase = Dijkstra(robot.position, base);
-returnMargin = max(MIN_RETURN_MARGIN, costToBase / RETURN_MARGIN_DIVISOR);
-```
+| Ký hiệu | Loại | Ý nghĩa |
+|---|---|---|
+| `G` | Guard | Tác nhân tuần tra cục bộ |
+| `V` | Vehicle | Tác nhân di chuyển theo hành lang hoặc hướng tuần tra |
 
-Robot bắt đầu quay về base khi:
-
-```cpp
-energy <= costToBase + returnMargin
-```
-
-Robot rơi vào vùng critical khi:
-
-```cpp
-energy <= costToBase || energy <= MIN_EMERGENCY_ENERGY
-```
-
-Cách này làm policy phụ thuộc vào vị trí thật của robot: càng xa base thì robot càng thận trọng.
-
-Ý tưởng thiết kế:
+Các ràng buộc chính:
 
 ```text
-Nếu còn an toàn để làm nhiệm vụ:
-    tiếp tục coverage
-
-Nếu pin/rủi ro vượt ngưỡng:
-    return-to-base
-
-Nếu về được base:
-    recharge rồi tiếp tục nếu mission chưa xong
-
-Nếu không thể return và trạng thái critical:
-    WAIT_FOR_COMMAND hoặc POWER_SAVE
-
-Nếu preserve được:
-    POWER_SAVE
-
-Nếu không thể return, không preserve, và có directive:
-    FINAL_PUSH
+- Vật cản động không được khởi tạo trên căn cứ.
+- Vật cản động không đi xuyên vật cản tĩnh.
+- Vật cản động không chủ động lao vào ô robot đang chiếm.
+- Robot không được bắt đầu bước đi vào ô đang bị vật cản động chiếm.
+- Nếu đường hiện tại bị ảnh hưởng, robot có thể chờ, lập kế hoạch lại hoặc quay về căn cứ.
 ```
+
+Vật cản động được cập nhật bởi module môi trường. Robot cập nhật ô cần tránh cho môi trường bằng vị trí hiện tại của mình để giảm nguy cơ xung đột trực tiếp.
 
 ---
 
-## 7. Return-to-base và graceful failure
-
-Khi cần quay về base, robot không được lao vào vật cản động.
-
-Nếu đường về bị chặn, robot xử lý theo chuỗi:
-
-```text
-RETURN_TO_BASE
-→ wait / replan
-→ tactical yield
-→ detour
-→ WAIT_FOR_COMMAND / POWER_SAVE
-```
-
-Tactical yield cho phép robot tạm lùi hoặc dịch sang một ô covered an toàn để giải phóng choke point.
-
-Nếu coverage đã hoàn tất nhưng đường về không còn an toàn và năng lượng critical, robot chuyển sang `POWER_SAVE` thay vì chết vô ích.
-
----
-
-## 8. Dynamic obstacles
-
-Các vật cản động đại diện cho các thực thể di chuyển trong môi trường nhiệm vụ:
-
-| Ký hiệu | Ý nghĩa |
-|---|---|
-| `G` | Guard / patrol |
-| `V` | Vehicle / convoy |
-
-Dynamic obstacle không được chủ động đâm xuyên qua robot. Robot cập nhật ô cần tránh cho môi trường bằng:
-
-```cpp
-setRobotAvoidanceCell(rb.pos);
-```
-
-Các invariant quan trọng:
-
-```text
-Dynamic obstacle không chiếm base.
-Dynamic obstacle không đi xuyên vật cản tĩnh.
-Dynamic obstacle không chồng lên obstacle khác.
-Dynamic obstacle không chủ động lao vào robot.
-Robot không được bước vào dynamicBlocked cell.
-Visualization không được mutate world.
-Policy không được mutate world trực tiếp.
-```
-
-Dynamic obstacle chạy trên thread riêng. `simMutex` bảo vệ obstacle update, robot tick và render read.
-
----
-
-## 9. Visualization
-
-Project dùng OpenCV để hiển thị:
-
-- grid map;
-- vật cản tĩnh;
-- vật cản động;
-- ô đã coverage;
-- vị trí và hướng robot;
-- active path;
-- trail robot đã đi;
-- overlap trên cạnh;
-- HUD trạng thái;
-- năng lượng còn lại;
-- số lần return/recharge.
-
-Sau refactor, phần visualization được tách vào:
-
-```text
-srcs/visualization/
-```
-
-| Module | Trách nhiệm |
-|---|---|
-| `visual_layout` | screen size, cell size, offsets, coordinate transform |
-| `visual_assets` | load icon guard/vehicle |
-| `map_renderer` | vẽ map cells và grid lines |
-| `entity_renderer` | vẽ robot, path, trail, dynamic obstacles |
-| `hud_renderer` | HUD state và HUD drawing |
-| `opencv.cpp` | façade cho `initWindow`, `drawFrame`, `waitFrame` |
-
-Visualization chỉ phản ánh trạng thái simulation. Không dùng visualization để thay đổi policy hoặc mission semantics.
-
----
-
-## 10. Cấu trúc code hiện tại
+## 9. Cấu trúc thư mục
 
 ```text
 srcs/
@@ -335,6 +236,7 @@ srcs/
     mission_summary.cpp
 
     energy_model.cpp
+    energy_reserve_policy.cpp
     path_builder.cpp
     path_safety.cpp
     return_to_base.cpp
@@ -358,8 +260,6 @@ srcs/
     types.h
 ```
 
-`coverage.cpp` hiện đóng vai trò entry point của mission controller, không còn chứa toàn bộ state machine chi tiết.
-
 Luồng chạy chính:
 
 ```text
@@ -376,9 +276,9 @@ main.cpp
 
 ---
 
-## 11. Format input
+## 10. Input
 
-Chương trình đọc map từ thư mục:
+Chương trình đọc test map từ thư mục:
 
 ```text
 tests/
@@ -392,7 +292,7 @@ Nhap duong dan file input:
 
 chỉ cần nhập tên file không có `.txt`.
 
-Ví dụ nhập:
+Ví dụ:
 
 ```text
 demo_01_open_room
@@ -404,57 +304,21 @@ Chương trình sẽ đọc:
 tests/demo_01_open_room.txt
 ```
 
-Các ký hiệu trong map:
+Các ký hiệu thường dùng trong map:
 
 | Ký hiệu | Ý nghĩa |
 |---|---|
-| `R` | Vị trí bắt đầu của robot / base |
+| `R` | Vị trí xuất phát của robot, đồng thời là căn cứ |
 | `0` | Ô trống |
 | `1` | Vật cản tĩnh |
-| `G` | Guard / patrol |
-| `V` | Vehicle / convoy |
+| `G` | Guard |
+| `V` | Vehicle |
+
+Các ô có chi phí địa hình riêng được biểu diễn bằng giá trị số tương ứng trong input.
 
 ---
 
-## 12. Demo scenarios
-
-Một số scenario đề xuất:
-
-```text
-demo_01_open_room
-demo_02_long_corridor
-demo_03_rooms_with_door
-demo_04_static_maze
-demo_05_guard_alert
-demo_06_vehicle_corridor
-demo_07_vehicle_detour
-demo_09_low_energy_large_room
-demo_10_blocked_return_preserve
-```
-
-| Scenario | Mục tiêu |
-|---|---|
-| `demo_01_open_room` | Coverage bình thường trong phòng mở |
-| `demo_02_long_corridor` | Hành lang hẹp |
-| `demo_03_rooms_with_door` | Coverage qua các phòng nối nhau |
-| `demo_04_static_maze` | Điều hướng với vật cản tĩnh |
-| `demo_05_guard_alert` | Robot cảnh giác/replan quanh guard |
-| `demo_06_vehicle_corridor` | Tương tác với vehicle trong hành lang |
-| `demo_07_vehicle_detour` | Đường bị chặn và có đường vòng |
-| `demo_09_low_energy_large_room` | Test pin thấp, return và recharge |
-| `demo_10_blocked_return_preserve` | Đường về bị chặn, critical và preserve |
-
-Regression tối thiểu nên chạy sau mỗi thay đổi đáng kể:
-
-```text
-demo_01_open_room
-demo_09_low_energy_large_room
-demo_10_blocked_return_preserve
-```
-
----
-
-## 13. Build
+## 11. Build
 
 Project viết bằng C++17 và dùng OpenCV.
 
@@ -475,24 +339,7 @@ g++ -std=c++17 \
   -o coverage_sim
 ```
 
-Trên Windows/Code::Blocks, cần cấu hình:
-
-Compiler search directories:
-
-```text
-srcs/environment
-srcs/robot
-srcs/world
-srcs/visualization
-<OpenCV include directory>
-```
-
-Linker settings:
-
-```text
-<OpenCV library directory>
-opencv_worldxxx hoặc các OpenCV libs tương ứng
-```
+Trên Windows hoặc Code::Blocks, cần cấu hình include path và linker path cho OpenCV tương ứng với môi trường cài đặt.
 
 Nếu gặp lỗi:
 
@@ -513,7 +360,7 @@ thì linker chưa link đúng OpenCV library.
 
 ---
 
-## 14. Run
+## 12. Run
 
 Sau khi build:
 
@@ -527,11 +374,11 @@ Sau đó nhập tên test, ví dụ:
 demo_01_open_room
 ```
 
+Với Windows, chạy file `.exe` được build từ IDE hoặc terminal, sau đó nhập tên test tương tự.
+
 ---
 
-## 15. Thuật toán ở mức pseudo-code
-
-Pseudo-code tổng quát của mission controller:
+## 13. Pseudo-code tổng quát
 
 ```text
 initialize robot at base
@@ -539,191 +386,169 @@ initialize environment
 mark current cell as covered
 
 while mission is not terminal:
-    update robot avoidance cell for dynamic obstacles
-    estimate costToBase using Dijkstra
-    evaluate energy risk and mission state
+    update dynamic obstacles
+    update robot avoidance cell
+    estimate cost to base
 
     if coverage is complete and robot is not at base:
         switch to RETURN_TO_BASE
 
-    if energy is low and robot can still return:
+    if energy indicates return is needed:
         switch to RETURN_TO_BASE
 
     if state == NORMAL:
-        choose nearest uncovered reachable cell
-        build path using Dijkstra
-        move one safe step
+        collect uncovered candidate cells
+        sort candidates by cost from robot
+        for each candidate:
+            estimate cost to target
+            estimate cost from target to base
+            compute return margin
+            if energy condition is satisfied:
+                build path to candidate
+                execute safe movement
+                break
 
     if state == ALERT:
-        re-evaluate path safety
-        if safe:
-            continue mission
-        else if recoverable:
-            replan
-        else:
-            HOLD_SAFE or RETURN_TO_BASE
+        check path safety
+        replan or switch to safer state
 
     if state == HOLD_SAFE:
-        wait briefly
-        retry replan / recovery
-        if risk remains high:
-            RETURN_TO_BASE
+        wait briefly and retry recovery/replan
 
     if state == RETURN_TO_BASE:
         build path to base
-        if path is safe:
-            move one safe step toward base
+        if path is safe and affordable:
+            move one step toward base
         else:
-            try tactical yield or detour
-        if robot reaches base:
-            if coverage complete:
-                MISSION_SUCCESS
-            else:
-                RECHARGING
+            wait, yield, detour, or preserve state
 
     if state == RECHARGING:
         restore energy
         switch to NORMAL
 
-    if state == WAIT_FOR_COMMAND:
-        choose POWER_SAVE or FINAL_PUSH depending on directive
-
-    if state == POWER_SAVE:
-        stop safely and preserve mission value
-
-    if state == FINAL_PUSH:
-        continue only as terminal strategic behavior
+    if terminal condition is reached:
+        record mission outcome
 ```
 
-Energy-aware return rule:
+Energy-aware target condition:
 
 ```text
-costToBase = Dijkstra(robot.position, base)
-returnMargin = max(MIN_RETURN_MARGIN, costToBase / RETURN_MARGIN_DIVISOR)
+energy >= cost_to_target + cost_to_base + return_margin
+```
 
-if energy <= costToBase + returnMargin:
-    RETURN_TO_BASE
+Dynamic-aware return margin:
 
-if energy <= costToBase or energy <= MIN_EMERGENCY_ENERGY:
-    critical
+```text
+if no dynamic obstacle exists:
+    return_margin = 0
+else:
+    return_margin = max(15, cost_to_base / 4)
 ```
 
 ---
 
-## 16. Metrics / evaluation
+## 14. Metrics / evaluation
 
-Các metrics phù hợp để so sánh thuật toán:
+Các chỉ số chính dùng để đánh giá:
 
 ```text
 coverage percentage
-total steps
-energy used
+covered cells
+free cells
+steps
+total energy used
+movement energy
+turn energy
 remaining energy
+revisit count
 return count
 recharge count
-time spent in ALERT / HOLD_SAFE
 mission outcome
+final at base
 ```
 
-Các baseline có thể dùng trong report:
-
-| Baseline | Ý nghĩa |
-|---|---|
-| Greedy CPP | Luôn đi tới ô chưa phủ gần nhất, ít hoặc không xét mission risk |
-| Energy-aware return | Có xét chi phí quay về base |
-| Mission-aware system | Có energy, return, recharge, dynamic obstacle safety, preserve/failure semantics |
-
-Mục tiêu của project không phải chỉ tối đa hóa coverage percentage. Mục tiêu là tối đa hóa giá trị nhiệm vụ trong khi vẫn giữ recoverability khi điều kiện cho phép.
+Những chỉ số này giúp đánh giá nhiệm vụ theo nhiều mặt: mức độ bao phủ, chi phí năng lượng, số bước đi lặp, số chu kỳ quay về/sạc và trạng thái kết thúc.
 
 ---
 
-## 17. Design philosophy
+## 15. Demo và benchmark
 
-Project này xem coverage không chỉ là bài toán đi qua mọi ô.
+Một số nhóm kịch bản thường dùng trong báo cáo:
 
-Trong môi trường có năng lượng hữu hạn và vật cản động, robot phải ra quyết định:
+| Nhóm | Mục tiêu |
+|---|---|
+| A | Ảnh hưởng của vị trí căn cứ |
+| B | Năng lượng thấp |
+| C | Mật độ vật cản cao hoặc vùng khó tiếp cận |
+| D | Vật cản động ảnh hưởng đường đi hoặc đường quay về |
+| E | Địa hình có trọng số |
+| F | Bản đồ lớn hơn |
+| H | Mô hình toàn hướng đối chứng (`metric_h`) |
 
-```text
-Có nên tiếp tục coverage không?
-Có nên quay về base không?
-Có nên chờ không?
-Có nên đi vòng không?
-Có nên preserve không?
-Có nên final push không?
-```
-
-Triết lý thiết kế:
-
-```text
-Constraint tạo ra tradeoff.
-Tradeoff tạo ra quyết định.
-Quyết định tạo ra trí tuệ.
-```
-
-Các keyword liên quan:
+Sau mỗi thay đổi lớn ở thuật toán, nên chạy lại các kịch bản đại diện và đối chiếu các trường:
 
 ```text
-bounded rationality
-graceful degradation
-survivability engineering
-mission-aware autonomy
-fail-safe systems
-recoverability
+coverage
+steps
+energy used
+turn energy
+returns
+recharges
+mission outcome
+final at base
 ```
 
-Một hệ tự trị trưởng thành không phải là hệ không bao giờ thất bại. Đó là hệ biết thất bại an toàn, giữ lại giá trị, và bảo toàn khả năng phục hồi khi thành công tuyệt đối không còn được đảm bảo.
+---
+
+## 16. Ghi log và kết quả
+
+Hệ thống ghi nhận kết quả chạy để phục vụ phân tích thực nghiệm. Các log và ảnh kết quả cuối có thể được dùng để kiểm tra lại hành vi của robot trong từng kịch bản.
+
+Báo cáo đồ án không cần đưa toàn bộ log thô vào nội dung chính. Thay vào đó, nên tổng hợp các chỉ số chính trong bảng thực nghiệm và sử dụng một số ảnh minh họa đại diện.
+
+---
+
+## 17. Ghi chú về thiết kế
+
+Một số nguyên tắc thiết kế của repo:
+
+```text
+- Planner không chỉ xét đường đi tới mục tiêu, mà còn xét đường quay về căn cứ.
+- Quỹ dự phòng 25% chỉ có ý nghĩa khi có rủi ro động.
+- Bản đồ tĩnh không cần giữ quỹ dự phòng động.
+- Về tới căn cứ với đúng 0 năng lượng vẫn được tính là quay về thành công.
+- Vật cản động làm thay đổi trạng thái an toàn của ô theo thời gian.
+- Visualization chỉ phản ánh trạng thái mô phỏng, không quyết định logic nhiệm vụ.
+- Log và thống kê phải đủ rõ để đối chiếu với báo cáo.
+```
 
 ---
 
 ## 18. Giới hạn hiện tại
 
 - Một robot duy nhất.
-- Full map được biết trước.
-- Chuyển động trên grid.
-- Planner dùng Dijkstra unit-cost.
-- Dynamic obstacle behavior còn đơn giản.
-- Energy model hiện chủ yếu gắn với movement.
-- Waiting/replanning chưa trừ pin trực tiếp.
-- Chưa có physics thật.
-- Chưa có multi-robot coordination.
-- Chưa có test runner tự động.
-- Chưa có headless mode chính thức.
+- Bản đồ được biết trước trong phạm vi mô phỏng.
+- Chuyển động rời rạc theo bản đồ lưới.
+- Chưa xử lý cảm biến thật, định vị thật hoặc điều khiển phần cứng.
+- Chưa mô phỏng đầy đủ động lực học, trượt bánh, gia tốc hoặc tiêu hao khi chờ.
+- Vật cản động được mô hình hóa ở mức tác nhân hợp tác, không phải tác nhân đối kháng.
+- Chưa có hệ thống phối hợp nhiều robot.
+- Chưa có test runner tự động/headless chính thức.
+
+Các giới hạn này xác định phạm vi hiện tại của simulator. Chúng không làm thay đổi mục tiêu chính của repo: kiểm chứng thuật toán lập kế hoạch bao phủ có xét năng lượng, chi phí quay, quay về căn cứ và vật cản động trên môi trường mô phỏng.
 
 ---
 
-## 19. Hướng phát triển tiếp theo
+## 19. Hướng phát triển
 
-Các hướng nên ưu tiên theo blast radius thấp trước:
+Các hướng mở rộng hợp lý:
 
-- Rescue/recon static maps:
-  - choke points;
-  - corridors;
-  - rooms;
-  - convoy intersections;
-  - low-energy return risk;
-  - blocked return preserve case.
-- Mission summary rõ hơn.
-- Baseline comparison trong report:
-  - Greedy CPP;
-  - Energy-aware return;
-  - Proposed mission-aware system.
-- Formal hóa policy:
-  - objective;
-  - trigger;
-  - tradeoff;
-  - action.
-- Test runner nhỏ cho regression demos.
-- Headless mode để chạy regression test không cần UI.
-- Icon/base/recharge visualization rõ hơn nếu chỉ thay asset hoặc fallback draw.
-- Energy model nâng cao:
-  - turn cost;
-  - acceleration cost;
-  - speed penalty;
-  - waiting/replanning cost.
+- Bổ sung test runner tự động để chạy nhiều kịch bản không cần thao tác thủ công.
+- Bổ sung chế độ headless để chạy benchmark không cần giao diện OpenCV.
+- Cải tiến chiến lược chọn mục tiêu để giảm revisit trong bản đồ nhiều hành lang/hốc cục bộ.
+- Bổ sung nhiều căn cứ hoặc nhiều trạm sạc.
+- Bổ sung chi phí chờ, chi phí tăng tốc/giảm tốc hoặc chi phí lập kế hoạch lại.
+- Mở rộng mô hình vật cản động bằng dự đoán quỹ đạo ngắn hạn.
+- Nghiên cứu phối hợp nhiều robot sau khi mô hình một robot đã ổn định.
 
-Các hướng nên để sau vì blast radius cao:
-
-- Dynamic map runtime.
-- Refactor lớn folder/module.
-- Render API lớn chỉ để thêm visual hint.
-- Concurrency/mutex refactor khi chưa có symptom rõ.
+Các mở rộng lớn như dynamic map runtime, multi-robot coordination hoặc mô hình cảm biến thật nên được thực hiện theo từng bước nhỏ để tránh làm tăng độ phức tạp ngoài khả năng kiểm chứng.
