@@ -201,7 +201,8 @@ namespace
         consumeEnergy(rb, move.movementEnergyCost, ENERGY_USE_MOVEMENT);
 
         result.moved = true;
-        result.powerLoss = (rb.energy <= 0);
+        result.powerLoss = rb.energy < 0 ||
+                           (rb.energy <= 0 && !(rb.pos == rb.base));
 
         std::string commonDetails =
             "decision_id=" + std::to_string(ctx.activeDecisionId) +

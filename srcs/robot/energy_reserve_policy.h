@@ -4,11 +4,13 @@
 
 struct ReturnEnergyPolicy
 {
-    // Minimum reserve for an unexpected turn/replan near the base.
+    // Minimum reserve used only when the scenario contains dynamic obstacles.
+    // Static-only maps do not need this extra return margin.
     double minReturnMargin = 15.0;
 
-    // Long return paths receive an additional proportional reserve:
-    // ceil(costToBase / returnMarginDivisor) to the nearest 0.5 energy unit.
+    // Long return paths in dynamic-obstacle scenarios receive an additional
+    // proportional reserve: ceil(costToBase / returnMarginDivisor) to the
+    // nearest 0.5 energy unit.
     double returnMarginDivisor = 4.0;
 
     // Absolute emergency threshold used when the robot is nearly depleted.

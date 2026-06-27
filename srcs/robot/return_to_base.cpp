@@ -39,7 +39,7 @@ namespace
         if (staticCostToBase >= INF)
             return false;
 
-        return rb.energy > staticCostToBase;
+        return rb.energy >= staticCostToBase;
     }
 
     bool isRobotCriticalEnergy(const Robot &rb)
@@ -66,7 +66,7 @@ namespace
         if (cost >= INF)
             return true;
 
-        return cost < rb.energy;
+        return cost <= rb.energy;
     }
 
     void logUnaffordableReturnPath(
@@ -459,7 +459,11 @@ void handleReturnToBase(Robot &rb, CoverageContext &ctx)
     double turnQuarterCost =
         turnQuarterEnergyCostForStep(rb, next);
 
-    if (movementCost + turnQuarterCost >= rb.energy)
+    double nextStepCost = movementCost + turnQuarterCost;
+    bool exactZeroAtBase = (next == rb.base && nextStepCost == rb.energy);
+
+    if (nextStepCost > rb.energy ||
+        (nextStepCost >= rb.energy && !exactZeroAtBase))
     {
         waitReturnToBase(
             ctx,

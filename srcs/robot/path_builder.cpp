@@ -260,9 +260,9 @@ PathBuildResult rebuildPathToBase(Robot &rb, CoverageContext *ctx)
         );
     }
 
-    // Arriving with exactly zero energy is still power loss in robot_motion.cpp,
-    // so require strictly more energy than the full path cost.
-    if (costToBase >= rb.energy)
+    // Returning to base with exactly zero energy is valid: the mission still
+    // succeeds because the robot has already reached the charging point.
+    if (costToBase > rb.energy)
     {
         logPathRejectedForEnergy(ctx, rb, "return_path_energy_rejected", costToBase);
         clearRobotPath(rb);
@@ -321,7 +321,7 @@ PathBuildResult rebuildSafeDetourPathToBase(Robot &rb, CoverageContext *ctx)
         );
     }
 
-    if (costToBase >= rb.energy)
+    if (costToBase > rb.energy)
     {
         logPathRejectedForEnergy(ctx, rb, "return_detour_energy_rejected", costToBase);
         clearRobotPath(rb);

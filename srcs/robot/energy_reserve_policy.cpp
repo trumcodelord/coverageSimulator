@@ -1,5 +1,6 @@
 #include "energy_reserve_policy.h"
 
+#include "dynamic_obstacle.h"
 #include "energy_model.h"
 
 #include <algorithm>
@@ -12,6 +13,11 @@ namespace
     bool isAtBase(const Robot &rb)
     {
         return rb.pos == rb.base;
+    }
+
+    bool hasDynamicReturnRisk()
+    {
+        return !obstacles.empty();
     }
 
     double proportionalReserve(
@@ -33,6 +39,12 @@ double returnMarginForCost(
 ) {
     if (costToBase < 0.0 || costToBase >= INF)
         return (double)INF;
+
+    // The 25%/minimum reserve is a risk buffer for dynamic obstacles.
+    // When the scenario has no dynamic obstacle, the return path is evaluated
+    // on the known static map, so the extra reserve is not applied.
+    if (!hasDynamicReturnRisk())
+        return 0.0;
 
     return quantizeEnergy(max(
         policy.minReturnMargin,
